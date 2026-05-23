@@ -8,7 +8,8 @@ import { VendasScreen } from '@/screens/VendasScreen'
 import { EstoqueScreen } from '@/screens/EstoqueScreen'
 import { TrocaPrecoScreen } from '@/screens/TrocaPrecoScreen'
 import { AutorizacoesScreen } from '@/screens/AutorizacoesScreen'
-import { ConfigScreen } from '@/screens/ConfigScreen'
+import { ConfigScreen }   from '@/screens/ConfigScreen'
+import { UsuariosScreen } from '@/screens/UsuariosScreen'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { session, isLoading } = useAuth()
@@ -43,7 +44,8 @@ const router = createBrowserRouter([
       { path: 'estoque',    element: <EstoqueScreen />      },
       { path: 'preco',      element: <TrocaPrecoScreen />   },
       { path: 'auth',       element: <AutorizacoesScreen /> },
-      { path: 'config',     element: <ConfigScreen />       },
+      { path: 'config',          element: <ConfigScreen />   },
+      { path: 'config/usuarios', element: <UsuariosScreen /> },
     ],
   },
   { path: '*', element: <Navigate to="/" replace /> },

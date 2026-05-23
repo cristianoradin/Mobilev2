@@ -48,6 +48,15 @@ CREATE TABLE usuarios (
 );
 CREATE INDEX idx_usuarios_cliente ON usuarios(cliente_id);
 
+-- ─── Vínculo Usuário ↔ Empresas (postos) ────────────────────────────────────
+CREATE TABLE usuario_empresas (
+  usuario_id UUID   NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+  empresa_id BIGINT NOT NULL REFERENCES empresas(id)  ON DELETE CASCADE,
+  PRIMARY KEY (usuario_id, empresa_id)
+);
+CREATE INDEX idx_ue_usuario ON usuario_empresas(usuario_id);
+CREATE INDEX idx_ue_empresa ON usuario_empresas(empresa_id);
+
 -- ─── Admin (usuários do portal SGA) ─────────────────────────────────────────
 CREATE TABLE admins (
   id            UUID         PRIMARY KEY DEFAULT gen_random_uuid(),

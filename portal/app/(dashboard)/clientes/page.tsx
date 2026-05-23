@@ -17,10 +17,12 @@ interface Usuario {
   id:           string
   nome:         string
   email:        string
+  telefone?:    string
   role:         UserRole
   ativo:        boolean
-  ultimo_login: string | null
-  created_at:   string
+  empresaIds:   number[]
+  ultimoLogin:  string | null
+  createdAt:    string
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -70,9 +72,26 @@ export default function ClientesPage() {
   const [usuarios,          setUsuarios]          = useState<Usuario[]>([])
   const [carregandoUsers,   setCarregandoUsers]   = useState(false)
   const [modalUsuario,      setModalUsuario]      = useState(false)
-  const [formUser,          setFormUser]          = useState({ nome: '', email: '', telefone: '', role: 'operador' as UserRole, senha: '' })
+  const [formUser,          setFormUser]          = useState({ nome: '', email: '', telefone: '', role: 'operador' as UserRole, senha: '', empresa_ids: [] as number[] })
   const [salvandoUser,      setSalvandoUser]      = useState(false)
   const [erroUser,          setErroUser]          = useState<string | null>(null)
+
+  // Ao abrir o modal de usuário, pré-seleciona todos postos se só há 1
+  function abrirModalUsuario() {
+    const ids = selecionado?.empresas.length === 1 ? [selecionado.empresas[0].id] : []
+    setFormUser({ nome: '', email: '', telefone: '', role: 'operador', senha: '', empresa_ids: ids })
+    setErroUser(null)
+    setModalUsuario(true)
+  }
+
+  function toggleEmpresa(id: number) {
+    setFormUser(f => ({
+      ...f,
+      empresa_ids: f.empresa_ids.includes(id)
+        ? f.empresa_ids.filter(x => x !== id)
+        : [...f.empresa_ids, id],
+    }))
+  }
 
   // ── carrega usuários quando seleciona cliente ────────────────────────────
   const carregarUsuarios = useCallback(async (clienteId: string) => {
@@ -102,6 +121,11 @@ export default function ClientesPage() {
     setErroUser(null)
     setSalvandoUser(true)
     try {
+      if (formUser.empresa_ids.length === 0 && (selecionado.empresas.length > 0)) {
+        setErroUser('Selecione pelo menos um posto')
+        setSalvandoUser(false)
+        return
+      }
       const res = await fetch(`/api/clientes/${selecionado.id}/usuarios`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -111,7 +135,7 @@ export default function ClientesPage() {
       if (!res.ok) { setErroUser(data.error ?? 'Erro ao salvar'); return }
       if (data.usuario) setUsuarios(prev => [...prev, data.usuario!])
       setModalUsuario(false)
-      setFormUser({ nome: '', email: '', telefone: '', role: 'operador', senha: '' })
+      setFormUser({ nome: '', email: '', telefone: '', role: 'operador', senha: '', empresa_ids: [] })
     } catch {
       setErroUser('Falha na comunicação com o servidor')
     } finally {
@@ -325,7 +349,7 @@ export default function ClientesPage() {
                         <Users size={11} />Usuários PWA
                       </p>
                       <button
-                        onClick={() => setModalUsuario(true)}
+                        onClick={abrirModalUsuario}
                         className="text-[#009c3b] hover:text-[#00b548] transition-colors"
                         title="Adicionar usuário"
                       >
@@ -342,24 +366,39 @@ export default function ClientesPage() {
                     ) : (
                       <div className="space-y-1">
                         {usuarios.map(u => (
-                          <div key={u.id} className="flex items-center gap-2 py-1">
-                            <div className="w-6 h-6 bg-white/8 rounded-full flex items-center justify-center flex-shrink-0">
-                              <span className="text-white/60 text-[10px] font-bold">{u.nome.charAt(0)}</span>
+                          <div key={u.id} className="py-1.5 border-b border-white/5 last:border-0">
+                            <div className="flex items-center gap-2">
+                              <div className="w-6 h-6 bg-white/8 rounded-full flex items-center justify-center flex-shrink-0">
+                                <span className="text-white/60 text-[10px] font-bold">{u.nome.charAt(0)}</span>
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-white/80 text-xs truncate">{u.nome}</p>
+                                <p className="text-white/30 text-[10px] truncate">{u.email}</p>
+                              </div>
+                              <Badge variant={u.role === 'dono' ? 'purple' : u.role === 'gerente' ? 'info' : 'default'}>
+                                {u.role}
+                              </Badge>
+                              <button
+                                onClick={() => desativarUsuario(u.id)}
+                                className="text-white/20 hover:text-red-400 transition-colors flex-shrink-0"
+                                title="Desativar usuário"
+                              >
+                                <Trash2 size={11} />
+                              </button>
                             </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-white/80 text-xs truncate">{u.nome}</p>
-                              <p className="text-white/30 text-[10px] truncate">{u.email}</p>
-                            </div>
-                            <Badge variant={u.role === 'dono' ? 'purple' : u.role === 'gerente' ? 'info' : 'default'}>
-                              {u.role}
-                            </Badge>
-                            <button
-                              onClick={() => desativarUsuario(u.id)}
-                              className="text-white/20 hover:text-red-400 transition-colors flex-shrink-0"
-                              title="Desativar usuário"
-                            >
-                              <Trash2 size={11} />
-                            </button>
+                            {/* Postos vinculados */}
+                            {u.empresaIds && u.empresaIds.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-1 pl-8">
+                                {u.empresaIds.map(eid => {
+                                  const emp = selecionado?.empresas.find(e => e.id === eid)
+                                  return emp ? (
+                                    <span key={eid} className="text-[9px] bg-white/5 text-white/40 px-1.5 py-0.5 rounded flex items-center gap-0.5">
+                                      <Building2 size={8} />{emp.nome}
+                                    </span>
+                                  ) : null
+                                })}
+                              </div>
+                            )}
                           </div>
                         ))}
                       </div>
@@ -414,10 +453,10 @@ export default function ClientesPage() {
           onClick={() => { if (!salvandoUser) { setModalUsuario(false); setErroUser(null) } }}
         >
           <div
-            className="w-full max-w-md bg-[#0f1117] border border-white/10 rounded-2xl shadow-2xl"
+            className="w-full max-w-md bg-[#0f1117] border border-white/10 rounded-2xl shadow-2xl max-h-[90vh] flex flex-col"
             onClick={e => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between px-6 py-4 border-b border-white/8">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-white/8 flex-shrink-0">
               <div>
                 <h2 className="text-white font-semibold text-base">Novo Usuário</h2>
                 <p className="text-white/40 text-xs">{selecionado.nome}</p>
@@ -427,7 +466,7 @@ export default function ClientesPage() {
               </button>
             </div>
 
-            <form onSubmit={salvarUsuario} className="p-6 space-y-4">
+            <form onSubmit={salvarUsuario} className="p-6 space-y-4 overflow-y-auto">
               <div>
                 <label className="text-white/60 text-xs mb-1 block">Nome completo *</label>
                 <Input
@@ -487,6 +526,41 @@ export default function ClientesPage() {
                   />
                 </div>
               </div>
+
+              {/* ── Postos (empresas) ── */}
+              {selecionado.empresas.length > 0 && (
+                <div>
+                  <label className="text-white/60 text-xs mb-2 block flex items-center gap-1.5">
+                    <Building2 size={11} />
+                    Postos com acesso *
+                    {selecionado.empresas.length === 1 && (
+                      <span className="text-white/30 text-[10px]">(único posto — selecionado automaticamente)</span>
+                    )}
+                  </label>
+                  <div className="space-y-1.5">
+                    {selecionado.empresas.map(emp => (
+                      <label
+                        key={emp.id}
+                        className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border cursor-pointer transition-colors ${
+                          formUser.empresa_ids.includes(emp.id)
+                            ? 'border-[#009c3b]/40 bg-[#009c3b]/8 text-white'
+                            : 'border-white/8 bg-white/3 text-white/50 hover:border-white/15'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          className="accent-[#009c3b]"
+                          checked={formUser.empresa_ids.includes(emp.id)}
+                          onChange={() => toggleEmpresa(emp.id)}
+                        />
+                        <Building2 size={13} className={formUser.empresa_ids.includes(emp.id) ? 'text-[#009c3b]' : 'text-white/30'} />
+                        <span className="text-sm flex-1">{emp.nome}</span>
+                        {emp.is_master && <Badge variant="default">Master</Badge>}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {erroUser && (
                 <p className="text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">

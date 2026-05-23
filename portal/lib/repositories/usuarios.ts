@@ -32,25 +32,35 @@ export interface Usuario {
   ativo:       boolean
   ultimoLogin: string | null
   createdAt:   string
+  empresaIds:  number[]   // postos vinculados a este usuário
 }
 
 export interface CreateUsuarioInput {
-  cliente_id: string
-  email:      string
-  nome:       string
-  telefone:   string
-  role:       UserRole
-  senha:      string
+  cliente_id:  string
+  email:       string
+  nome:        string
+  telefone:    string
+  role:        UserRole
+  senha:       string
+  empresa_ids: number[]   // postos que o usuário pode acessar
 }
 
 // ── Queries ──────────────────────────────────────────────────────────────────
 export async function listUsuariosByCliente(clienteId: string): Promise<Usuario[]> {
   const sql = getDb()
   const rows = await sql`
-    SELECT id, cliente_id, email, nome, telefone, role, ativo, ultimo_login, created_at
-    FROM   usuarios
-    WHERE  cliente_id = ${clienteId}
-    ORDER  BY nome
+    SELECT
+      u.id, u.cliente_id, u.email, u.nome, u.telefone, u.role,
+      u.ativo, u.ultimo_login, u.created_at,
+      COALESCE(
+        ARRAY_REMOVE(ARRAY_AGG(ue.empresa_id ORDER BY ue.empresa_id), NULL),
+        '{}'::bigint[]
+      ) AS empresa_ids
+    FROM   usuarios u
+    LEFT JOIN usuario_empresas ue ON ue.usuario_id = u.id
+    WHERE  u.cliente_id = ${clienteId}
+    GROUP  BY u.id
+    ORDER  BY u.nome
   `
   return rows as unknown as Usuario[]
 }
@@ -58,11 +68,19 @@ export async function listUsuariosByCliente(clienteId: string): Promise<Usuario[
 export async function findUsuarioByEmailGlobal(email: string): Promise<(Usuario & { senhaHash: string }) | null> {
   const sql = getDb()
   const rows = await sql`
-    SELECT id, cliente_id, email, nome, telefone, role, ativo, ultimo_login, created_at, senha_hash
-    FROM   usuarios
-    WHERE  email = ${email.toLowerCase()}
-    AND    ativo = true
-    ORDER  BY created_at DESC
+    SELECT
+      u.id, u.cliente_id, u.email, u.nome, u.telefone, u.role,
+      u.ativo, u.ultimo_login, u.created_at, u.senha_hash,
+      COALESCE(
+        ARRAY_REMOVE(ARRAY_AGG(ue.empresa_id ORDER BY ue.empresa_id), NULL),
+        '{}'::bigint[]
+      ) AS empresa_ids
+    FROM   usuarios u
+    LEFT JOIN usuario_empresas ue ON ue.usuario_id = u.id
+    WHERE  u.email = ${email.toLowerCase()}
+    AND    u.ativo = true
+    GROUP  BY u.id
+    ORDER  BY u.created_at DESC
     LIMIT  1
   `
   return (rows[0] as unknown as (Usuario & { senhaHash: string })) ?? null
@@ -72,12 +90,32 @@ export async function createUsuario(input: CreateUsuarioInput): Promise<Usuario>
   const sql = getDb()
   const senhaHash = hashPassword(input.senha)
 
-  const rows = await sql`
-    INSERT INTO usuarios (cliente_id, email, nome, telefone, role, senha_hash)
-    VALUES (${input.cliente_id}, ${input.email.toLowerCase()}, ${input.nome}, ${input.telefone}, ${input.role}, ${senhaHash})
-    RETURNING id, cliente_id, email, nome, telefone, role, ativo, ultimo_login, created_at
-  `
-  return rows[0] as unknown as Usuario
+  const usuario = await sql.begin(async (tx) => {
+    const [row] = await tx`
+      INSERT INTO usuarios (cliente_id, email, nome, telefone, role, senha_hash)
+      VALUES (
+        ${input.cliente_id},
+        ${input.email.toLowerCase()},
+        ${input.nome},
+        ${input.telefone},
+        ${input.role},
+        ${senhaHash}
+      )
+      RETURNING id, cliente_id, email, nome, telefone, role, ativo, ultimo_login, created_at
+    `
+
+    // Vincula o usuário aos postos escolhidos
+    if (input.empresa_ids.length > 0) {
+      await tx`
+        INSERT INTO usuario_empresas (usuario_id, empresa_id)
+        SELECT ${row.id}, unnest(${input.empresa_ids}::bigint[])
+      `
+    }
+
+    return { ...row, empresa_ids: input.empresa_ids }
+  })
+
+  return usuario as unknown as Usuario
 }
 
 export async function updateUltimoLogin(userId: string): Promise<void> {

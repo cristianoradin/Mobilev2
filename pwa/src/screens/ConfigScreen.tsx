@@ -1,4 +1,5 @@
-import { User, Building2, Shield, Bell, Sun, Moon, LogOut } from 'lucide-react'
+import { User, Building2, Shield, Bell, Sun, Moon, LogOut, Users, ChevronRight } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { useAuth }  from '@/core/auth/AuthContext'
 import { useMQTT }  from '@/core/mqtt/MQTTContext'
 import { useTheme } from '@/core/theme/ThemeContext'
@@ -9,6 +10,7 @@ export function ConfigScreen() {
   const { session, logout }     = useAuth()
   const { connected }           = useMQTT()
   const { isDark, toggleTheme } = useTheme()
+  const navigate                = useNavigate()
 
   if (!session) return null
 
@@ -23,8 +25,14 @@ export function ConfigScreen() {
       titulo: 'Conta',
       items: [
         { icon: User,      label: 'Meu Perfil', sub: session.nome,                           onClick: undefined },
-        { icon: Building2, label: 'Empresas',   sub: `${session.empresas.length} empresa(s)`, onClick: undefined },
+        { icon: Building2, label: 'Empresas',   sub: `${session.empresas.length} posto(s)`,  onClick: undefined },
         { icon: Shield,    label: 'Permissões', sub: roleLabel[session.role],                onClick: undefined },
+        ...(session.role === 'dono' ? [{
+          icon: Users,
+          label: 'Usuários',
+          sub: 'Gerenciar usuários e acessos',
+          onClick: () => navigate('/config/usuarios'),
+        }] : []),
       ],
     },
     {
@@ -84,16 +92,18 @@ export function ConfigScreen() {
           </h2>
           <Card>
             <div className="divide-y divide-rim">
-              {group.items.map(({ icon: Icon, label, sub }) => (
+              {group.items.map(({ icon: Icon, label, sub, onClick }) => (
                 <button
                   key={label}
-                  className="w-full flex items-center gap-3 px-4 py-4 hover:bg-ink/5 transition-colors text-left"
+                  onClick={onClick}
+                  className={`w-full flex items-center gap-3 px-4 py-4 hover:bg-ink/5 transition-colors text-left ${onClick ? 'cursor-pointer' : 'cursor-default'}`}
                 >
-                  <Icon size={18} className="text-ink/50" />
+                  <Icon size={18} className={onClick ? 'text-primary' : 'text-ink/50'} />
                   <div className="flex-1 min-w-0">
                     <p className="text-ink text-sm font-medium">{label}</p>
                     {sub && <p className="text-ink/40 text-xs mt-0.5">{sub}</p>}
                   </div>
+                  {onClick && <ChevronRight size={14} className="text-ink/30" />}
                 </button>
               ))}
             </div>

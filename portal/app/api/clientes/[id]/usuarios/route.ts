@@ -24,8 +24,12 @@ export async function GET(_req: NextRequest, { params }: Params) {
 export async function POST(req: NextRequest, { params }: Params) {
   const { id: cliente_id } = await params
   try {
-    const body = await req.json() as { nome: string; email: string; telefone: string; role: UserRole; senha: string }
+    const body = await req.json() as {
+      nome: string; email: string; telefone: string
+      role: UserRole; senha: string; empresa_ids?: number[]
+    }
     const { nome, email, telefone, role, senha } = body
+    const empresa_ids: number[] = Array.isArray(body.empresa_ids) ? body.empresa_ids : []
 
     if (!nome?.trim())     return NextResponse.json({ error: 'Nome obrigatório' },     { status: 400 })
     if (!email?.trim())    return NextResponse.json({ error: 'E-mail obrigatório' },   { status: 400 })
@@ -38,7 +42,15 @@ export async function POST(req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'Senha deve ter no mínimo 6 caracteres' }, { status: 400 })
     }
 
-    const usuario = await createUsuario({ cliente_id, nome: nome.trim(), email: email.trim(), telefone: telefone.trim(), role, senha })
+    const usuario = await createUsuario({
+      cliente_id,
+      nome:        nome.trim(),
+      email:       email.trim(),
+      telefone:    telefone.trim(),
+      role,
+      senha,
+      empresa_ids,
+    })
     return NextResponse.json({ usuario }, { status: 201 })
   } catch (err) {
     const msg = String(err)

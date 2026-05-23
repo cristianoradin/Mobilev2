@@ -27,8 +27,15 @@ export async function POST(req: NextRequest) {
     // Atualiza último login em background
     updateUltimoLogin(user.id).catch(() => {})
 
-    const empresas = cliente.empresas.map(e => e.id)
-    const jwt = await generateUserJWT(user.id, user.role, user.clienteId, cliente.cnpj, empresas)
+    // Dono sempre acessa todos os postos; outros só os vinculados
+    // Se não há nenhum vínculo (usuário antigo), libera todos como fallback
+    const todasEmpresas  = cliente.empresas
+    const empresasDoUser = user.role === 'dono' || user.empresaIds.length === 0
+      ? todasEmpresas
+      : todasEmpresas.filter(e => user.empresaIds.includes(e.id))
+
+    const empresaIds = empresasDoUser.map(e => e.id)
+    const jwt = await generateUserJWT(user.id, user.role, user.clienteId, cliente.cnpj, empresaIds)
 
     return NextResponse.json({
       id:         user.id,
@@ -37,7 +44,7 @@ export async function POST(req: NextRequest) {
       role:       user.role,
       cliente_id: user.clienteId,
       cnpj:       cliente.cnpj,
-      empresas:   cliente.empresas,
+      empresas:   empresasDoUser,
       jwt,
       expires_at: Date.now() + 8 * 60 * 60 * 1000, // 8h
     })
