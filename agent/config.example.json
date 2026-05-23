@@ -1,0 +1,47 @@
+{
+  "agent_id": "gere-um-uuid-aqui",
+  "cliente_cnpj": "XX.XXX.XXX/0001-XX",
+  "jwt_token": "COLE_AQUI_O_TOKEN_GERADO_NO_PORTAL",
+
+  "mqtt": {
+    "broker": "mqtts://cloud.sgapetro.com.br:8883",
+    "client_id": "agent-CNPJ_SEM_PONTUACAO",
+    "username": "agent",
+    "password": "gerado-no-portal",
+    "keep_alive_seconds": 30,
+    "reconnect_wait_seconds": 5
+  },
+
+  "database": {
+    "host": "localhost",
+    "port": 5432,
+    "name": "nome_do_banco",
+    "user": "sga_readonly",
+    "password": "SENHA_READ_ONLY",
+    "ssl_mode": "disable",
+    "max_connections": 5,
+    "query_timeout_seconds": 30
+  },
+
+  "cache": {
+    "path": "./agent.db",
+    "max_age_minutes": 15,
+    "vacuum_interval_hours": 24
+  },
+
+  "log": {
+    "level": "info",
+    "path": "./agent.log",
+    "max_size_mb": 50,
+    "max_backups": 3
+  },
+
+  "portal": {
+    "url": "https://mobilev2.gruposgapetro.com.br:8443",
+    "push_secret": ""
+  },
+
+  "http": {
+    "port": 8765
+  }
+}

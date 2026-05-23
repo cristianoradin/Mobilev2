@@ -1,0 +1,84 @@
+version: "3.9"
+
+services:
+  # ─── PostgreSQL 16 ─────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: sga_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       ${POSTGRES_DB:-sgapetro}
+      POSTGRES_USER:     ${POSTGRES_USER:-sgapetro}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/00_schema.sql:/docker-entrypoint-initdb.d/00_schema.sql
+      - ./postgres/01_seed.sql:/docker-entrypoint-initdb.d/01_seed.sql
+    ports:
+      - "127.0.0.1:5433:5432"   # porta 5433 no host (5432 já em uso pelo postgres do sistema)
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sgapetro}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── EMQX 5 (MQTT Broker) ──────────────────────────────────────────────────
+  emqx:
+    image: emqx/emqx:5.8
+    container_name: sga_emqx
+    restart: unless-stopped
+    environment:
+      EMQX_NAME:          sgapetro
+      EMQX_HOST:          0.0.0.0
+      EMQX_NODE__COOKIE:  ${EMQX_COOKIE}
+      EMQX_DASHBOARD__DEFAULT_USERNAME: ${EMQX_ADMIN_USER:-admin}
+      EMQX_DASHBOARD__DEFAULT_PASSWORD: ${EMQX_ADMIN_PASS}
+      # Permite conexões sem auth (configurar JWT via Dashboard depois)
+      EMQX_ALLOW_ANONYMOUS: "true"
+      # Habilita apenas file authorization (sem ACL file por enquanto)
+      EMQX_AUTHORIZATION__NO_MATCH: allow
+      EMQX_AUTHORIZATION__DENY_ACTION: ignore
+    volumes:
+      - emqx_data:/opt/emqx/data
+    ports:
+      - "1883:1883"    # MQTT TCP (agente local → cloud)
+      - "8083:8083"    # MQTT WebSocket (PWA → broker)
+      - "8883:8883"    # MQTT/TLS (opcional)
+      - "18083:18083"  # EMQX Dashboard (127.0.0.1 only abaixo)
+    healthcheck:
+      test: ["CMD", "emqx", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  # ─── Portal Next.js ─────────────────────────────────────────────────────────
+  portal:
+    build:
+      context: ../portal
+      dockerfile: Dockerfile
+    container_name: sga_portal
+    restart: unless-stopped
+    environment:
+      NODE_ENV:        production
+      DATABASE_URL:    postgres://${POSTGRES_USER:-sgapetro}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-sgapetro}
+      JWT_SECRET:      ${JWT_SECRET}
+      JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY}
+      JWT_PUBLIC_KEY:  ${JWT_PUBLIC_KEY}
+      VAPID_PUBLIC_KEY:  ${VAPID_PUBLIC_KEY}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY}
+      VAPID_CONTACT:     ${VAPID_CONTACT:-mailto:admin@sgapetro.cloud}
+      PUSH_SECRET:       ${PUSH_SECRET}
+      ADMIN_EMAIL:       ${ADMIN_EMAIL}
+      ADMIN_PASSWORD:    ${ADMIN_PASSWORD}
+      ADMIN_NOME:        ${ADMIN_NOME:-Admin SGA}
+    ports:
+      - "127.0.0.1:3001:3000"   # Next.js escuta na 3000 internamente → host:3001
+    depends_on:
+      postgres:
+        condition: service_healthy
+      emqx:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  emqx_data:

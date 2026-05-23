@@ -1,0 +1,432 @@
+'use client'
+import { useState, useEffect, useCallback } from 'react'
+import type { FormEvent } from 'react'
+import { TopBar }  from '@/components/layout/TopBar'
+import { Card }    from '@/components/ui/Card'
+import { Badge }   from '@/components/ui/Badge'
+import { Button }  from '@/components/ui/Button'
+import { Input }   from '@/components/ui/Input'
+import { type Cliente, type Plano } from '@/lib/types'
+import {
+  Plus, Building2, Mail, Phone, ChevronRight,
+  Key, BarChart3, X, Loader2,
+} from 'lucide-react'
+
+// ── helpers ──────────────────────────────────────────────────────────────────
+const planoBadge: Record<string, 'success' | 'info' | 'purple'> = {
+  basic:      'default' as 'success',
+  pro:        'info',
+  enterprise: 'purple',
+}
+
+const PLANOS: { value: Plano; label: string }[] = [
+  { value: 'basic',      label: 'Basic'      },
+  { value: 'pro',        label: 'Pro'        },
+  { value: 'enterprise', label: 'Enterprise' },
+]
+
+// ── tipos do form ─────────────────────────────────────────────────────────────
+interface FormState {
+  nome:         string
+  cnpj:         string
+  email:        string
+  telefone:     string
+  plano:        Plano
+  empresa_nome: string
+  empresa_cnpj: string
+}
+
+const FORM_VAZIO: FormState = {
+  nome: '', cnpj: '', email: '', telefone: '',
+  plano: 'basic', empresa_nome: '', empresa_cnpj: '',
+}
+
+// ── componente ────────────────────────────────────────────────────────────────
+export default function ClientesPage() {
+  const [clientes,    setClientes]    = useState<Cliente[]>([])
+  const [carregando,  setCarregando]  = useState(true)
+
+  const [selecionado,  setSelecionado]  = useState<Cliente | null>(null)
+  const [gerandoToken, setGerandoToken] = useState(false)
+  const [token,        setToken]        = useState<string | null>(null)
+
+  const [modalAberto,  setModalAberto]  = useState(false)
+  const [form,         setForm]         = useState<FormState>(FORM_VAZIO)
+  const [salvando,     setSalvando]     = useState(false)
+  const [erroForm,     setErroForm]     = useState<string | null>(null)
+
+  // ── carrega clientes ──────────────────────────────────────────────────────
+  const carregarClientes = useCallback(async () => {
+    setCarregando(true)
+    try {
+      const res = await fetch('/api/clientes')
+      const data = await res.json() as { clientes: Cliente[] }
+      setClientes(data.clientes ?? [])
+    } catch {
+      // mantém lista vazia em caso de erro
+    } finally {
+      setCarregando(false)
+    }
+  }, [])
+
+  useEffect(() => { carregarClientes() }, [carregarClientes])
+
+  // ── gera token do agente ──────────────────────────────────────────────────
+  async function gerarToken(cliente: Cliente) {
+    setGerandoToken(true)
+    setToken(null)
+    try {
+      const res  = await fetch('/api/agent/token', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ cliente_id: cliente.id }),
+      })
+      const data = await res.json() as { token: string }
+      setToken(data.token)
+    } catch {
+      setToken('ERRO ao gerar token')
+    } finally {
+      setGerandoToken(false)
+    }
+  }
+
+  // ── salva novo cliente ────────────────────────────────────────────────────
+  async function salvarCliente(e: FormEvent) {
+    e.preventDefault()
+    setErroForm(null)
+    setSalvando(true)
+    try {
+      const res = await fetch('/api/clientes', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(form),
+      })
+      const data = await res.json() as { cliente?: Cliente; error?: string }
+
+      if (!res.ok) {
+        setErroForm(data.error ?? 'Erro ao salvar')
+        return
+      }
+
+      // Adiciona o novo cliente na lista sem recarregar tudo
+      if (data.cliente) setClientes(prev => [data.cliente!, ...prev])
+      setModalAberto(false)
+      setForm(FORM_VAZIO)
+    } catch {
+      setErroForm('Falha na comunicação com o servidor')
+    } finally {
+      setSalvando(false)
+    }
+  }
+
+  function fecharModal() {
+    if (salvando) return
+    setModalAberto(false)
+    setForm(FORM_VAZIO)
+    setErroForm(null)
+  }
+
+  // ── render ────────────────────────────────────────────────────────────────
+  return (
+    <div>
+      <TopBar
+        title="Clientes"
+        subtitle={
+          carregando
+            ? 'Carregando…'
+            : `${clientes.filter(c => c.ativo).length} ativos de ${clientes.length} total`
+        }
+        actions={
+          <Button size="sm" onClick={() => setModalAberto(true)}>
+            <Plus size={14} />Novo Cliente
+          </Button>
+        }
+      />
+
+      <div className="p-8">
+        {/* ── Lista + painel lateral ── */}
+        <div className="flex gap-6">
+          <div className="flex-1 space-y-3">
+            {carregando ? (
+              <div className="flex items-center justify-center py-16 text-white/40">
+                <Loader2 size={20} className="animate-spin mr-2" />Carregando clientes…
+              </div>
+            ) : clientes.length === 0 ? (
+              <Card>
+                <div className="p-8 text-center text-white/40">
+                  Nenhum cliente cadastrado ainda.
+                </div>
+              </Card>
+            ) : (
+              clientes.map(cliente => (
+                <Card
+                  key={cliente.id}
+                  onClick={() => { setSelecionado(cliente); setToken(null) }}
+                  className={selecionado?.id === cliente.id ? 'border-[#009c3b]/40' : ''}
+                >
+                  <div className="flex items-center gap-4 p-5">
+                    <div className="w-11 h-11 bg-white/5 border border-white/10 rounded-xl flex items-center justify-center flex-shrink-0">
+                      <span className="text-white font-bold text-base">
+                        {cliente.nome.charAt(0).toUpperCase()}
+                      </span>
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <p className="text-white font-semibold text-sm">{cliente.nome}</p>
+                        <Badge variant={cliente.ativo ? 'success' : 'danger'}>
+                          {cliente.ativo ? 'Ativo' : 'Inativo'}
+                        </Badge>
+                        <Badge variant={planoBadge[cliente.plano] ?? 'default'}>
+                          {cliente.plano.toUpperCase()}
+                        </Badge>
+                      </div>
+                      <div className="flex items-center gap-4 text-white/40 text-xs">
+                        <span className="font-mono">{cliente.cnpj}</span>
+                        <span className="flex items-center gap-1"><Mail size={10} />{cliente.email}</span>
+                        {cliente.telefone && (
+                          <span className="flex items-center gap-1"><Phone size={10} />{cliente.telefone}</span>
+                        )}
+                      </div>
+                      <p className="text-white/30 text-xs mt-1">
+                        {cliente.empresas.length} empresa{cliente.empresas.length !== 1 ? 's' : ''}
+                        {' · '}
+                        Cadastrado em {new Date(cliente.created_at).toLocaleDateString('pt-BR')}
+                      </p>
+                    </div>
+
+                    <ChevronRight size={16} className="text-white/20 flex-shrink-0" />
+                  </div>
+                </Card>
+              ))
+            )}
+          </div>
+
+          {/* Painel lateral */}
+          {selecionado && (
+            <div className="w-80 space-y-4">
+              <Card>
+                <div className="p-5">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-12 h-12 bg-[#009c3b]/15 border border-[#009c3b]/25 rounded-xl flex items-center justify-center">
+                      <span className="text-[#009c3b] font-bold text-lg">
+                        {selecionado.nome.charAt(0)}
+                      </span>
+                    </div>
+                    <div>
+                      <p className="text-white font-semibold text-sm">{selecionado.nome}</p>
+                      <p className="text-white/40 text-xs">{selecionado.cnpj}</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 mb-4">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-white/50">E-mail</span>
+                      <span className="text-white text-xs">{selecionado.email}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-white/50">Plano</span>
+                      <Badge variant={planoBadge[selecionado.plano] ?? 'default'}>
+                        {selecionado.plano}
+                      </Badge>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-white/50">Empresas</span>
+                      <span className="text-white">{selecionado.empresas.length}</span>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-white/8 pt-3 mb-4">
+                    <p className="text-white/40 text-xs uppercase tracking-wider mb-2">Filiais</p>
+                    {selecionado.empresas.map(e => (
+                      <div key={e.id} className="flex items-center gap-2 py-1.5">
+                        <Building2 size={12} className="text-white/30" />
+                        <span className="text-white/70 text-xs flex-1">{e.nome}</span>
+                        {e.is_master && <Badge variant="default">Master</Badge>}
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => gerarToken(selecionado)}
+                      loading={gerandoToken}
+                    >
+                      <Key size={13} />
+                      Gerar Token do Agente
+                    </Button>
+                    <Button variant="secondary" size="sm" className="w-full">
+                      <BarChart3 size={13} />
+                      Ver Gráficos Associados
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+
+              {token && (
+                <Card>
+                  <div className="p-4">
+                    <p className="text-[#009c3b] text-xs font-semibold mb-2 uppercase tracking-wider">
+                      Token JWT do Agente
+                    </p>
+                    <div className="bg-black/40 rounded-lg p-3 mb-3">
+                      <code className="text-green-400 text-[10px] break-all leading-relaxed font-mono">
+                        {token}
+                      </code>
+                    </div>
+                    <p className="text-white/30 text-xs">
+                      Cole em <code className="text-white/50">config.json → jwt_token</code> no servidor do cliente.
+                    </p>
+                  </div>
+                </Card>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Modal Novo Cliente ── */}
+      {modalAberto && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+          onClick={fecharModal}
+        >
+          <div
+            className="w-full max-w-lg bg-[#0f1117] border border-white/10 rounded-2xl shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-white/8">
+              <h2 className="text-white font-semibold text-base">Novo Cliente</h2>
+              <button onClick={fecharModal} className="text-white/40 hover:text-white transition-colors">
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Form */}
+            <form onSubmit={salvarCliente} className="p-6 space-y-4">
+              {/* Dados do cliente */}
+              <p className="text-white/50 text-xs uppercase tracking-wider font-medium">Dados do cliente</p>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2">
+                  <label className="text-white/60 text-xs mb-1 block">Nome / Razão Social *</label>
+                  <Input
+                    placeholder="Posto Central Ltda"
+                    value={form.nome}
+                    onChange={e => setForm(f => ({ ...f, nome: e.target.value }))}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="text-white/60 text-xs mb-1 block">CNPJ *</label>
+                  <Input
+                    placeholder="00.000.000/0001-00"
+                    value={form.cnpj}
+                    onChange={e => setForm(f => ({ ...f, cnpj: e.target.value }))}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="text-white/60 text-xs mb-1 block">Plano *</label>
+                  <select
+                    className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-[#009c3b]/50"
+                    value={form.plano}
+                    onChange={e => setForm(f => ({ ...f, plano: e.target.value as Plano }))}
+                    required
+                  >
+                    {PLANOS.map(p => (
+                      <option key={p.value} value={p.value} className="bg-[#0f1117]">
+                        {p.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-white/60 text-xs mb-1 block">E-mail *</label>
+                  <Input
+                    type="email"
+                    placeholder="contato@posto.com.br"
+                    value={form.email}
+                    onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="text-white/60 text-xs mb-1 block">Telefone</label>
+                  <Input
+                    placeholder="(11) 9 9999-0000"
+                    value={form.telefone}
+                    onChange={e => setForm(f => ({ ...f, telefone: e.target.value }))}
+                  />
+                </div>
+              </div>
+
+              {/* Empresa master */}
+              <p className="text-white/50 text-xs uppercase tracking-wider font-medium pt-1">
+                Empresa / Filial principal
+              </p>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-white/60 text-xs mb-1 block">Nome da Empresa *</label>
+                  <Input
+                    placeholder="Posto Central"
+                    value={form.empresa_nome}
+                    onChange={e => setForm(f => ({ ...f, empresa_nome: e.target.value }))}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="text-white/60 text-xs mb-1 block">CNPJ da Filial</label>
+                  <Input
+                    placeholder="00.000.000/0001-00"
+                    value={form.empresa_cnpj}
+                    onChange={e => setForm(f => ({ ...f, empresa_cnpj: e.target.value }))}
+                  />
+                </div>
+              </div>
+
+              {/* Erro */}
+              {erroForm && (
+                <p className="text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
+                  {erroForm}
+                </p>
+              )}
+
+              {/* Ações */}
+              <div className="flex gap-2 pt-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="flex-1"
+                  onClick={fecharModal}
+                  disabled={salvando}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="submit"
+                  variant="primary"
+                  className="flex-1"
+                  loading={salvando}
+                >
+                  <Plus size={14} />
+                  Cadastrar Cliente
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
