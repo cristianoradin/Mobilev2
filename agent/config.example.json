@@ -4,7 +4,7 @@
   "jwt_token": "COLE_AQUI_O_TOKEN_GERADO_NO_PORTAL",
 
   "mqtt": {
-    "broker": "mqtts://cloud.sgapetro.com.br:8883",
+    "broker": "mqtts://mobilev2.gruposgapetro.com.br:8883",
     "client_id": "agent-CNPJ_SEM_PONTUACAO",
     "username": "agent",
     "password": "gerado-no-portal",
@@ -37,7 +37,7 @@
   },
 
   "portal": {
-    "url": "https://mobilev2.gruposgapetro.com.br:8443",
+    "url": "https://mobilev2.gruposgapetro.com.br:4443",
     "push_secret": ""
   },
 

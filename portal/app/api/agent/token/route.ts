@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { generateAgentJWT } from '@/lib/jwt'
-import { MOCK_CLIENTES } from '@/lib/types'
+import { findClienteSafe } from '@/lib/repositories/clientes'
 
 export async function POST(req: NextRequest) {
   try {
@@ -10,8 +10,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'cliente_id obrigatório' }, { status: 400 })
     }
 
-    // Em produção: busca do banco de dados
-    const cliente = MOCK_CLIENTES.find(c => c.id === cliente_id)
+    const cliente = await findClienteSafe(cliente_id)
     if (!cliente) {
       return NextResponse.json({ error: 'Cliente não encontrado' }, { status: 404 })
     }

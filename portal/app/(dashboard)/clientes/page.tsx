@@ -6,11 +6,22 @@ import { Card }    from '@/components/ui/Card'
 import { Badge }   from '@/components/ui/Badge'
 import { Button }  from '@/components/ui/Button'
 import { Input }   from '@/components/ui/Input'
-import { type Cliente, type Plano } from '@/lib/types'
+import { type Cliente, type Plano, type UserRole } from '@/lib/types'
 import {
   Plus, Building2, Mail, Phone, ChevronRight,
-  Key, BarChart3, X, Loader2,
+  Key, BarChart3, X, Loader2, Users, Trash2, UserPlus,
 } from 'lucide-react'
+
+// ── Tipo local de usuário ─────────────────────────────────────────────────────
+interface Usuario {
+  id:           string
+  nome:         string
+  email:        string
+  role:         UserRole
+  ativo:        boolean
+  ultimo_login: string | null
+  created_at:   string
+}
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 const planoBadge: Record<string, 'success' | 'info' | 'purple'> = {
@@ -54,6 +65,66 @@ export default function ClientesPage() {
   const [form,         setForm]         = useState<FormState>(FORM_VAZIO)
   const [salvando,     setSalvando]     = useState(false)
   const [erroForm,     setErroForm]     = useState<string | null>(null)
+
+  // ── Usuários ────────────────────────────────────────────────────────────
+  const [usuarios,          setUsuarios]          = useState<Usuario[]>([])
+  const [carregandoUsers,   setCarregandoUsers]   = useState(false)
+  const [modalUsuario,      setModalUsuario]      = useState(false)
+  const [formUser,          setFormUser]          = useState({ nome: '', email: '', role: 'operador' as UserRole, senha: '' })
+  const [salvandoUser,      setSalvandoUser]      = useState(false)
+  const [erroUser,          setErroUser]          = useState<string | null>(null)
+
+  // ── carrega usuários quando seleciona cliente ────────────────────────────
+  const carregarUsuarios = useCallback(async (clienteId: string) => {
+    setCarregandoUsers(true)
+    try {
+      const res  = await fetch(`/api/clientes/${clienteId}/usuarios`)
+      const data = await res.json() as { usuarios: Usuario[] }
+      setUsuarios(data.usuarios ?? [])
+    } catch {
+      setUsuarios([])
+    } finally {
+      setCarregandoUsers(false)
+    }
+  }, [])
+
+  function selecionarCliente(cliente: Cliente) {
+    setSelecionado(cliente)
+    setToken(null)
+    setUsuarios([])
+    carregarUsuarios(cliente.id)
+  }
+
+  // ── salva novo usuário ───────────────────────────────────────────────────
+  async function salvarUsuario(e: FormEvent) {
+    e.preventDefault()
+    if (!selecionado) return
+    setErroUser(null)
+    setSalvandoUser(true)
+    try {
+      const res = await fetch(`/api/clientes/${selecionado.id}/usuarios`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(formUser),
+      })
+      const data = await res.json() as { usuario?: Usuario; error?: string }
+      if (!res.ok) { setErroUser(data.error ?? 'Erro ao salvar'); return }
+      if (data.usuario) setUsuarios(prev => [...prev, data.usuario!])
+      setModalUsuario(false)
+      setFormUser({ nome: '', email: '', role: 'operador', senha: '' })
+    } catch {
+      setErroUser('Falha na comunicação com o servidor')
+    } finally {
+      setSalvandoUser(false)
+    }
+  }
+
+  async function desativarUsuario(userId: string) {
+    if (!selecionado) return
+    if (!confirm('Desativar este usuário?')) return
+    await fetch(`/api/clientes/${selecionado.id}/usuarios?usuario_id=${userId}`, { method: 'DELETE' })
+    setUsuarios(prev => prev.filter(u => u.id !== userId))
+  }
 
   // ── carrega clientes ──────────────────────────────────────────────────────
   const carregarClientes = useCallback(async () => {
@@ -161,7 +232,7 @@ export default function ClientesPage() {
               clientes.map(cliente => (
                 <Card
                   key={cliente.id}
-                  onClick={() => { setSelecionado(cliente); setToken(null) }}
+                  onClick={() => selecionarCliente(cliente)}
                   className={selecionado?.id === cliente.id ? 'border-[#009c3b]/40' : ''}
                 >
                   <div className="flex items-center gap-4 p-5">
@@ -247,6 +318,54 @@ export default function ClientesPage() {
                     ))}
                   </div>
 
+                  {/* ── Usuários ── */}
+                  <div className="border-t border-white/8 pt-3 mb-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-white/40 text-xs uppercase tracking-wider flex items-center gap-1.5">
+                        <Users size={11} />Usuários PWA
+                      </p>
+                      <button
+                        onClick={() => setModalUsuario(true)}
+                        className="text-[#009c3b] hover:text-[#00b548] transition-colors"
+                        title="Adicionar usuário"
+                      >
+                        <UserPlus size={13} />
+                      </button>
+                    </div>
+
+                    {carregandoUsers ? (
+                      <div className="flex items-center gap-1.5 py-2 text-white/30 text-xs">
+                        <Loader2 size={10} className="animate-spin" />Carregando…
+                      </div>
+                    ) : usuarios.length === 0 ? (
+                      <p className="text-white/25 text-xs italic py-1">Nenhum usuário cadastrado</p>
+                    ) : (
+                      <div className="space-y-1">
+                        {usuarios.map(u => (
+                          <div key={u.id} className="flex items-center gap-2 py-1">
+                            <div className="w-6 h-6 bg-white/8 rounded-full flex items-center justify-center flex-shrink-0">
+                              <span className="text-white/60 text-[10px] font-bold">{u.nome.charAt(0)}</span>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-white/80 text-xs truncate">{u.nome}</p>
+                              <p className="text-white/30 text-[10px] truncate">{u.email}</p>
+                            </div>
+                            <Badge variant={u.role === 'dono' ? 'purple' : u.role === 'gerente' ? 'info' : 'default'}>
+                              {u.role}
+                            </Badge>
+                            <button
+                              onClick={() => desativarUsuario(u.id)}
+                              className="text-white/20 hover:text-red-400 transition-colors flex-shrink-0"
+                              title="Desativar usuário"
+                            >
+                              <Trash2 size={11} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
                   <div className="space-y-2">
                     <Button
                       variant="primary"
@@ -287,6 +406,96 @@ export default function ClientesPage() {
           )}
         </div>
       </div>
+
+      {/* ── Modal Novo Usuário ── */}
+      {modalUsuario && selecionado && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+          onClick={() => { if (!salvandoUser) { setModalUsuario(false); setErroUser(null) } }}
+        >
+          <div
+            className="w-full max-w-md bg-[#0f1117] border border-white/10 rounded-2xl shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-6 py-4 border-b border-white/8">
+              <div>
+                <h2 className="text-white font-semibold text-base">Novo Usuário</h2>
+                <p className="text-white/40 text-xs">{selecionado.nome}</p>
+              </div>
+              <button onClick={() => { setModalUsuario(false); setErroUser(null) }} className="text-white/40 hover:text-white transition-colors">
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={salvarUsuario} className="p-6 space-y-4">
+              <div>
+                <label className="text-white/60 text-xs mb-1 block">Nome completo *</label>
+                <Input
+                  placeholder="João da Silva"
+                  value={formUser.nome}
+                  onChange={e => setFormUser(f => ({ ...f, nome: e.target.value }))}
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="text-white/60 text-xs mb-1 block">E-mail *</label>
+                <Input
+                  type="email"
+                  placeholder="joao@posto.com.br"
+                  value={formUser.email}
+                  onChange={e => setFormUser(f => ({ ...f, email: e.target.value }))}
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-white/60 text-xs mb-1 block">Perfil *</label>
+                  <select
+                    className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-[#009c3b]/50"
+                    value={formUser.role}
+                    onChange={e => setFormUser(f => ({ ...f, role: e.target.value as UserRole }))}
+                    required
+                  >
+                    <option value="operador" className="bg-[#0f1117]">Operador</option>
+                    <option value="gerente"  className="bg-[#0f1117]">Gerente</option>
+                    <option value="dono"     className="bg-[#0f1117]">Proprietário</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-white/60 text-xs mb-1 block">Senha inicial *</label>
+                  <Input
+                    type="password"
+                    placeholder="mín. 6 caracteres"
+                    value={formUser.senha}
+                    onChange={e => setFormUser(f => ({ ...f, senha: e.target.value }))}
+                    required
+                    minLength={6}
+                  />
+                </div>
+              </div>
+
+              {erroUser && (
+                <p className="text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
+                  {erroUser}
+                </p>
+              )}
+
+              <div className="flex gap-2 pt-1">
+                <Button type="button" variant="secondary" className="flex-1"
+                  onClick={() => { setModalUsuario(false); setErroUser(null) }} disabled={salvandoUser}>
+                  Cancelar
+                </Button>
+                <Button type="submit" variant="primary" className="flex-1" loading={salvandoUser}>
+                  <UserPlus size={13} />Criar Usuário
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* ── Modal Novo Cliente ── */}
       {modalAberto && (
