@@ -36,9 +36,9 @@
 html.light {
   --c-bg:       #f0f2f5;
   --c-surface:  #ffffff;
-  --c-surface2: #e8eaed;
-  --c-rim:      #e4e6ea;
-  --c-rim2:     #cdd0d5;
+  --c-surface2: #eaecef;
+  --c-rim:      #e2e5ea;
+  --c-rim2:     #c8cbd2;
   --c-ink:      #111827;
 }
 
@@ -73,9 +73,27 @@ body {
 ::-webkit-scrollbar-thumb { background: var(--c-rim2); border-radius: 2px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--c-rim2); }
 
+/* ── Modo claro: profundidade e sombras ───────────────────────────────────── */
+/* Cards recebem sombra sutil para criar elevação no fundo claro */
+html.light .rounded-2xl,
+html.light .rounded-xl {
+  --tw-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.06), 0 1px 2px -1px rgb(0 0 0 / 0.04);
+  --tw-shadow-colored: 0 1px 3px 0 var(--tw-shadow-color), 0 1px 2px -1px var(--tw-shadow-color);
+  box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
+}
+/* Header e BottomNav com sombra mais visível */
+html.light header,
+html.light nav {
+  box-shadow: 0 1px 6px 0 rgb(0 0 0 / 0.08);
+}
+/* Modais mantêm overlay forte */
+html.light .backdrop-blur-sm { backdrop-filter: blur(6px); }
+
 /* ── Inputs em tema claro ─────────────────────────────────────────────────── */
 html.light input::placeholder { color: rgba(17,24,39,0.3); }
 html.light input { color-scheme: light; }
+html.light select { color-scheme: light; }
+html.light textarea { color-scheme: light; }
 
 /* ── Animação de entrada ──────────────────────────────────────────────────── */
 @keyframes fadeSlideIn {

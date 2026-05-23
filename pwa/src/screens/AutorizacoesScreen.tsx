@@ -36,7 +36,7 @@ function CardSolicitacao({
             <Fuel size={18} className="text-blue" />
           </div>
           <div>
-            <p className="text-white font-semibold">Bico #{sol.bico}</p>
+            <p className="text-ink font-semibold">Bico #{sol.bico}</p>
             <p className="text-ink/40 text-xs">{sol.operador}</p>
           </div>
         </div>
@@ -50,11 +50,11 @@ function CardSolicitacao({
       <div className="bg-surface2 rounded-xl p-4 space-y-2 mb-4">
         <div className="flex justify-between text-sm">
           <span className="text-ink/50">Volume</span>
-          <span className="text-white font-medium">{sol.litros.toFixed(1)} L</span>
+          <span className="text-ink font-medium">{sol.litros.toFixed(1)} L</span>
         </div>
         <div className="flex justify-between text-sm">
           <span className="text-ink/50">Valor Total</span>
-          <span className="text-white font-medium">R$ {sol.valor_total.toFixed(2)}</span>
+          <span className="text-ink font-medium">R$ {sol.valor_total.toFixed(2)}</span>
         </div>
         <div className="flex justify-between text-sm border-t border-rim pt-2">
           <span className="text-yellow/80">Desconto Solicitado</span>
@@ -91,7 +91,7 @@ function CardSolicitacao({
           </button>
         </div>
       ) : (
-        <div className="bg-white/5 rounded-xl p-3 text-center">
+        <div className="bg-ink/5 rounded-xl p-3 text-center">
           <p className="text-ink/40 text-sm">Sem permissão para autorizar</p>
         </div>
       )}
@@ -112,7 +112,7 @@ export function AutorizacoesScreen() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-white">Autorizações</h1>
+          <h1 className="text-xl font-bold text-ink">Autorizações</h1>
           <p className="text-ink/40 text-sm">Descontos aguardando aprovação</p>
         </div>
         <div className="flex items-center gap-2">
@@ -187,7 +187,7 @@ export function AutorizacoesScreen() {
                   }
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-white text-sm font-medium">
+                  <p className="text-ink text-sm font-medium">
                     Bico #{sol.bico} — {sol.desconto_solicitado}% desc.
                   </p>
                   <p className="text-ink/40 text-xs">{tempoPassado(sol.timestamp)}</p>

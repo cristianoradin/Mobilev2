@@ -69,7 +69,7 @@ const mockKpis = [
 function CacheTag({ cached, stale, lastUpdate }: { cached: boolean; stale: boolean; lastUpdate: Date | null }) {
   if (!lastUpdate) return null
   const label = stale ? 'desatualizado' : cached ? 'cache' : 'ao vivo'
-  const color  = stale ? 'text-yellow-400' : cached ? 'text-white/30' : 'text-primary'
+  const color  = stale ? 'text-yellow' : cached ? 'text-ink/30' : 'text-primary'
   return (
     <span className={`flex items-center gap-1 text-[10px] ${color}`}>
       <Clock size={10} />
@@ -107,16 +107,16 @@ export function VendasScreen() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-white">Vendas</h1>
-          <p className="text-white/40 text-sm">
+          <h1 className="text-xl font-bold text-ink">Vendas</h1>
+          <p className="text-ink/40 text-sm">
             {offline ? 'Agente offline — dados mock' : 'Análise em tempo real'}
           </p>
         </div>
         <button
           onClick={() => { vendas.refresh(true); mix.refresh(true); kpiData.refresh(true) }}
-          className="p-2.5 bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl transition-all active:scale-90"
+          className="p-2.5 bg-surface border border-rim rounded-xl transition-all active:scale-90"
         >
-          <RefreshCw size={16} className={`text-white/60 ${anyLoading ? 'animate-spin' : ''}`} />
+          <RefreshCw size={16} className={`text-ink/60 ${anyLoading ? 'animate-spin' : ''}`} />
         </button>
       </div>
 
@@ -137,7 +137,7 @@ export function VendasScreen() {
             className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
               periodo === p
                 ? 'bg-primary text-white'
-                : 'bg-[#1a1a1a] text-white/50 border border-[#2a2a2a]'
+                : 'bg-surface text-ink/50 border border-rim'
             }`}
           >
             {p}
@@ -149,8 +149,8 @@ export function VendasScreen() {
       <div className="grid grid-cols-2 gap-3">
         {kpis.map(({ label, valor, delta, up }) => (
           <Card key={label} className="p-4">
-            <p className="text-white/50 text-xs mb-1">{label}</p>
-            <p className="text-xl font-bold text-white">
+            <p className="text-ink/50 text-xs mb-1">{label}</p>
+            <p className="text-xl font-bold text-ink">
               {label.includes('Total do Dia') || label.includes('Ticket')
                 ? `R$ ${valor.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}`
                 : label.includes('Litros')
@@ -171,7 +171,7 @@ export function VendasScreen() {
       {/* Gráfico área — vendas por hora */}
       <Card className="p-4">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-sm font-semibold text-white">Vendas por Hora (R$)</h2>
+          <h2 className="text-sm font-semibold text-ink">Vendas por Hora (R$)</h2>
           <CacheTag cached={vendas.cached} stale={vendas.stale} lastUpdate={vendas.lastUpdate} />
         </div>
         <DynamicChart metadata={metadataVendas} data={vendasData} loading={vendas.loading} />
@@ -180,7 +180,7 @@ export function VendasScreen() {
       {/* Gráfico pizza — mix */}
       <Card className="p-4">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-sm font-semibold text-white">Mix de Combustível (%)</h2>
+          <h2 className="text-sm font-semibold text-ink">Mix de Combustível (%)</h2>
           <CacheTag cached={mix.cached} stale={mix.stale} lastUpdate={mix.lastUpdate} />
         </div>
         <DynamicChart metadata={metadataMix} data={mixData} loading={mix.loading} />

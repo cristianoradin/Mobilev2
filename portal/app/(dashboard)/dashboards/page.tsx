@@ -1,11 +1,14 @@
 'use client'
+import { useState } from 'react'
 import Link from 'next/link'
 import { TopBar } from '@/components/layout/TopBar'
 import { Card, CardBody } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
+import { LiberarModal, type LiberacaoState } from '@/components/ui/LiberarModal'
 import { Plus, PanelsTopLeft, Edit2, Trash2, Play, BarChart3, LineChart,
-  PieChart, Gauge, TrendingUp, TableProperties, Flame, Layers, MousePointerClick } from 'lucide-react'
+  PieChart, Gauge, TrendingUp, TableProperties, Flame, Layers, MousePointerClick,
+  Globe, Lock, Users } from 'lucide-react'
 import type { Dashboard } from '@/lib/types'
 
 const ICON_MAP: Record<string, React.ElementType> = {
@@ -68,6 +71,16 @@ const TEMPLATE_INFO: Record<string, { nome: string; chart_type: string }> = {
 }
 
 export default function DashboardsPage() {
+  const [liberacoes, setLiberacoes] = useState<Record<string, LiberacaoState>>(() =>
+    Object.fromEntries(MOCK_DASHBOARDS.map(d => [d.id, { is_publico: false, cliente_ids: [] }]))
+  )
+  const [modalDash, setModalDash] = useState<Dashboard | null>(null)
+
+  function salvarLiberacao(id: string, nova: LiberacaoState) {
+    setLiberacoes(prev => ({ ...prev, [id]: nova }))
+    setModalDash(null)
+  }
+
   return (
     <div>
       <TopBar
@@ -134,15 +147,33 @@ export default function DashboardsPage() {
                   {/* Ações */}
                   <div className="flex flex-col gap-2 flex-shrink-0">
                     <Link href={`/dashboards/${dash.id}`}>
-                      <Button size="sm" variant="primary">
+                      <Button size="sm" variant="primary" className="w-full">
                         <Play size={12} />Ver
                       </Button>
                     </Link>
                     <Link href={`/dashboards/${dash.id}/editar`}>
-                      <Button size="sm" variant="secondary">
+                      <Button size="sm" variant="secondary" className="w-full">
                         <Edit2 size={12} />Editar
                       </Button>
                     </Link>
+                    <Button
+                      size="sm"
+                      className={`w-full border ${
+                        liberacoes[dash.id]?.is_publico
+                          ? 'bg-[#009c3b]/10 border-[#009c3b]/30 text-[#009c3b] hover:bg-[#009c3b]/20'
+                          : liberacoes[dash.id]?.cliente_ids?.length
+                          ? 'bg-blue-500/10 border-blue-500/30 text-blue-400 hover:bg-blue-500/20'
+                          : 'bg-white/5 border-white/10 text-white/50 hover:bg-white/10'
+                      }`}
+                      onClick={() => setModalDash(dash)}
+                    >
+                      {liberacoes[dash.id]?.is_publico
+                        ? <><Globe size={12} />Público</>
+                        : liberacoes[dash.id]?.cliente_ids?.length
+                        ? <><Users size={12} />Liberado</>
+                        : <><Lock size={12} />Liberar</>
+                      }
+                    </Button>
                     <Button size="sm" variant="danger" className="w-full justify-center">
                       <Trash2 size={12} />
                     </Button>
@@ -153,6 +184,17 @@ export default function DashboardsPage() {
           ))}
         </div>
       </div>
+
+      {/* Modal de liberação */}
+      {modalDash && (
+        <LiberarModal
+          itemNome={modalDash.nome}
+          itemTipo="dashboard"
+          liberacao={liberacoes[modalDash.id] ?? { is_publico: false, cliente_ids: [] }}
+          onSalvar={nova => salvarLiberacao(modalDash.id, nova)}
+          onFechar={() => setModalDash(null)}
+        />
+      )}
     </div>
   )
 }

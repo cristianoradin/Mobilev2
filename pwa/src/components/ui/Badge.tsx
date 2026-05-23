@@ -12,7 +12,7 @@ const variantClass = {
   warning: 'bg-yellow/20 text-yellow',
   danger:  'bg-danger/20 text-danger',
   info:    'bg-blue/20 text-blue',
-  default: 'bg-white/10 text-white/70',
+  default: 'bg-ink/10 text-ink/60',
 }
 
 export function Badge({ children, variant = 'default', size = 'sm' }: BadgeProps) {

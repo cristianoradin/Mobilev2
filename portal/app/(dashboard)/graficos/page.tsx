@@ -1,11 +1,13 @@
 'use client'
+import { useState } from 'react'
 import Link from 'next/link'
 import { TopBar } from '@/components/layout/TopBar'
 import { Card, CardBody } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
+import { LiberarModal, type LiberacaoState } from '@/components/ui/LiberarModal'
 import { Plus, BarChart3, LineChart, PieChart, Gauge, TrendingUp, Edit2, Trash2, Copy,
-  TableProperties, Flame, Layers, MousePointerClick } from 'lucide-react'
+  TableProperties, Flame, Layers, MousePointerClick, Globe, Lock, Users } from 'lucide-react'
 import type { ChartMetadata } from '@/lib/types'
 
 const ICON_MAP: Record<string, React.ElementType> = {
@@ -150,6 +152,24 @@ const MOCK_TEMPLATES: ChartMetadata[] = [
 ]
 
 export default function GraficosPage() {
+  const [liberacoes, setLiberacoes] = useState<Record<string, LiberacaoState>>(() =>
+    Object.fromEntries(MOCK_TEMPLATES.map(t => [t.id, { is_publico: t.is_publico, cliente_ids: [] }]))
+  )
+  const [modalItem, setModalItem] = useState<ChartMetadata | null>(null)
+
+  function salvarLiberacao(id: string, nova: LiberacaoState) {
+    setLiberacoes(prev => ({ ...prev, [id]: nova }))
+    setModalItem(null)
+  }
+
+  function badgeLiberacao(id: string) {
+    const l = liberacoes[id]
+    if (!l) return null
+    if (l.is_publico) return <Badge variant="success"><Globe size={9} className="mr-1" />Público</Badge>
+    if (l.cliente_ids.length > 0) return <Badge variant="info"><Users size={9} className="mr-1" />{l.cliente_ids.length} cliente(s)</Badge>
+    return <Badge variant="default"><Lock size={9} className="mr-1" />Restrito</Badge>
+  }
+
   return (
     <div>
       <TopBar
@@ -182,7 +202,7 @@ export default function GraficosPage() {
                         <p className="text-white font-semibold text-sm">{tmpl.nome}</p>
                         <Badge variant={COLOR_CAT[tmpl.categoria]}>{tmpl.categoria}</Badge>
                         {tLabel && <Badge variant={tStyle?.badge ?? 'default'}>{tLabel}</Badge>}
-                        {tmpl.is_publico && <Badge variant="default">Público</Badge>}
+                        {badgeLiberacao(tmpl.id)}
                       </div>
                       <p className="text-white/40 text-xs mb-3">{tmpl.descricao}</p>
 
@@ -217,7 +237,25 @@ export default function GraficosPage() {
                         <Button variant="secondary" size="sm">
                           <Copy size={12} />Duplicar
                         </Button>
-                        <Button variant="danger" size="sm" className="ml-auto">
+                        <Button
+                          size="sm"
+                          className={`ml-auto border ${
+                            liberacoes[tmpl.id]?.is_publico
+                              ? 'bg-[#009c3b]/10 border-[#009c3b]/30 text-[#009c3b] hover:bg-[#009c3b]/20'
+                              : liberacoes[tmpl.id]?.cliente_ids?.length
+                              ? 'bg-blue-500/10 border-blue-500/30 text-blue-400 hover:bg-blue-500/20'
+                              : 'bg-white/5 border-white/10 text-white/50 hover:bg-white/10'
+                          }`}
+                          onClick={() => setModalItem(tmpl)}
+                        >
+                          {liberacoes[tmpl.id]?.is_publico
+                            ? <><Globe size={12} />Público</>
+                            : liberacoes[tmpl.id]?.cliente_ids?.length
+                            ? <><Users size={12} />Liberado</>
+                            : <><Lock size={12} />Liberar</>
+                          }
+                        </Button>
+                        <Button variant="danger" size="sm">
                           <Trash2 size={12} />
                         </Button>
                       </div>
@@ -229,6 +267,17 @@ export default function GraficosPage() {
           })}
         </div>
       </div>
+
+      {/* Modal de liberação */}
+      {modalItem && (
+        <LiberarModal
+          itemNome={modalItem.nome}
+          itemTipo="template"
+          liberacao={liberacoes[modalItem.id] ?? { is_publico: false, cliente_ids: [] }}
+          onSalvar={nova => salvarLiberacao(modalItem.id, nova)}
+          onFechar={() => setModalItem(null)}
+        />
+      )}
     </div>
   )
 }

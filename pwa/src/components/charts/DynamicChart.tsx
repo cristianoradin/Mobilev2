@@ -1,6 +1,7 @@
 import ReactECharts from 'echarts-for-react'
 import type { ChartMetadata } from '@/lib/contracts'
-import { colors } from '@/lib/theme'
+import { useTheme }  from '@/core/theme/ThemeContext'
+import { colors }    from '@/lib/theme'
 
 interface Props {
   metadata: ChartMetadata
@@ -11,28 +12,46 @@ interface Props {
 const HEIGHT_MAP = { sm: 200, md: 300, lg: 400 }
 
 export function DynamicChart({ metadata, data, loading = false }: Props) {
+  const { isDark } = useTheme()
+
+  // Tokens adaptativos por tema
+  const th = isDark ? {
+    bg:        '#1a1a1a',
+    border:    '#2a2a2a',
+    textColor: '#ffffff',
+    axisColor: '#a0a0a0',
+    gridLine:  '#2a2a2a',
+    detailColor: '#ffffff',
+  } : {
+    bg:        '#ffffff',
+    border:    '#e4e6ea',
+    textColor: '#111827',
+    axisColor: '#6b7280',
+    gridLine:  '#e4e6ea',
+    detailColor: '#111827',
+  }
+
   if (loading) {
     return (
       <div
-        className="flex items-center justify-center rounded-2xl bg-white/5"
+        className="flex items-center justify-center rounded-2xl bg-ink/5"
         style={{ height: HEIGHT_MAP[metadata.display.height] }}
       >
         <div className="flex flex-col items-center gap-3">
           <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-          <span className="text-xs text-white/50">Carregando dados...</span>
+          <span className="text-xs text-ink/40">Carregando dados...</span>
         </div>
       </div>
     )
   }
 
-  const option = buildOption(metadata, data)
+  const option = buildOption(metadata, data, th)
 
   return (
     <div style={{ height: HEIGHT_MAP[metadata.display.height] }}>
       <ReactECharts
         option={option}
         style={{ height: '100%', width: '100%' }}
-        theme="dark"
         notMerge
         opts={{ renderer: 'canvas', devicePixelRatio: window.devicePixelRatio }}
       />
@@ -40,19 +59,20 @@ export function DynamicChart({ metadata, data, loading = false }: Props) {
   )
 }
 
-function buildOption(meta: ChartMetadata, data: Record<string, unknown>[]) {
-  const palette = [colors.primary, colors.blue, colors.orange, colors.yellow, colors.purple]
-
-  if (meta.chart_type === 'pie') {
-    return buildPie(meta, data, palette)
-  }
-  if (meta.chart_type === 'gauge') {
-    return buildGauge(meta, data)
-  }
-  return buildCartesian(meta, data, palette)
+type ThemeTokens = {
+  bg: string; border: string; textColor: string
+  axisColor: string; gridLine: string; detailColor: string
 }
 
-function buildCartesian(meta: ChartMetadata, data: Record<string, unknown>[], palette: string[]) {
+function buildOption(meta: ChartMetadata, data: Record<string, unknown>[], th: ThemeTokens) {
+  const palette = [colors.primary, colors.blue, colors.orange, colors.yellow, colors.purple]
+
+  if (meta.chart_type === 'pie')   return buildPie(meta, data, palette, th)
+  if (meta.chart_type === 'gauge') return buildGauge(meta, data, th)
+  return buildCartesian(meta, data, palette, th)
+}
+
+function buildCartesian(meta: ChartMetadata, data: Record<string, unknown>[], palette: string[], th: ThemeTokens) {
   const xValues = data.map(row => row[meta.axes.x.field])
 
   const series = meta.axes.y.map((yAxis, i) => {
@@ -72,29 +92,29 @@ function buildCartesian(meta: ChartMetadata, data: Record<string, unknown>[], pa
   return {
     backgroundColor: 'transparent',
     tooltip: meta.display.show_tooltip
-      ? { trigger: 'axis', backgroundColor: '#1a1a1a', borderColor: '#2a2a2a', textStyle: { color: '#fff' } }
+      ? { trigger: 'axis', backgroundColor: th.bg, borderColor: th.border, textStyle: { color: th.textColor } }
       : undefined,
     legend: meta.display.show_legend
-      ? { data: meta.axes.y.map(y => y.label), textStyle: { color: '#a0a0a0' }, bottom: 0 }
+      ? { data: meta.axes.y.map(y => y.label), textStyle: { color: th.axisColor }, bottom: 0 }
       : undefined,
     grid: { left: 12, right: 12, top: meta.display.show_legend ? 16 : 8, bottom: meta.display.show_legend ? 40 : 24, containLabel: true },
     xAxis: {
       type: 'category',
       data: xValues,
-      axisLabel: { color: '#a0a0a0', fontSize: 11, formatter: formatAxisLabel(meta.axes.x.format) },
-      axisLine: { lineStyle: { color: '#2a2a2a' } },
+      axisLabel: { color: th.axisColor, fontSize: 11, formatter: formatAxisLabel(meta.axes.x.format) },
+      axisLine: { lineStyle: { color: th.gridLine } },
       splitLine: { show: false },
     },
     yAxis: {
       type: 'value',
-      axisLabel: { color: '#a0a0a0', fontSize: 11, formatter: formatAxisLabel(meta.axes.y[0]?.format) },
-      splitLine: { lineStyle: { color: '#2a2a2a', type: 'dashed' } },
+      axisLabel: { color: th.axisColor, fontSize: 11, formatter: formatAxisLabel(meta.axes.y[0]?.format) },
+      splitLine: { lineStyle: { color: th.gridLine, type: 'dashed' } },
     },
     series,
   }
 }
 
-function buildPie(meta: ChartMetadata, data: Record<string, unknown>[], palette: string[]) {
+function buildPie(meta: ChartMetadata, data: Record<string, unknown>[], palette: string[], th: ThemeTokens) {
   const pieData = data.map((row, i) => ({
     name: String(row[meta.axes.x.field] ?? `Item ${i + 1}`),
     value: row[meta.axes.y[0]?.field ?? 'value'],
@@ -104,23 +124,23 @@ function buildPie(meta: ChartMetadata, data: Record<string, unknown>[], palette:
   return {
     backgroundColor: 'transparent',
     tooltip: meta.display.show_tooltip
-      ? { trigger: 'item', backgroundColor: '#1a1a1a', borderColor: '#2a2a2a', textStyle: { color: '#fff' } }
+      ? { trigger: 'item', backgroundColor: th.bg, borderColor: th.border, textStyle: { color: th.textColor } }
       : undefined,
     legend: meta.display.show_legend
-      ? { orient: 'vertical', right: 10, textStyle: { color: '#a0a0a0' } }
+      ? { orient: 'vertical', right: 10, textStyle: { color: th.axisColor } }
       : undefined,
     series: [{
       type: 'pie',
       radius: ['40%', '70%'],
       center: ['50%', '50%'],
       data: pieData,
-      label: { color: '#a0a0a0', fontSize: 11 },
-      emphasis: { itemStyle: { shadowBlur: 10, shadowOffsetX: 0, shadowColor: 'rgba(0,0,0,0.5)' } },
+      label: { color: th.axisColor, fontSize: 11 },
+      emphasis: { itemStyle: { shadowBlur: 10, shadowOffsetX: 0, shadowColor: 'rgba(0,0,0,0.2)' } },
     }],
   }
 }
 
-function buildGauge(meta: ChartMetadata, data: Record<string, unknown>[]) {
+function buildGauge(meta: ChartMetadata, data: Record<string, unknown>[], th: ThemeTokens) {
   const value = Number(data[0]?.[meta.axes.y[0]?.field ?? 'value'] ?? 0)
   const color = value > 50 ? colors.primary : value > 20 ? colors.yellow : colors.danger
 
@@ -142,9 +162,9 @@ function buildGauge(meta: ChartMetadata, data: Record<string, unknown>[]) {
       },
       axisTick: { show: false },
       splitLine: { show: false },
-      axisLabel: { color: '#a0a0a0', fontSize: 10 },
-      title: { offsetCenter: [0, '70%'], color: '#a0a0a0', fontSize: 13 },
-      detail: { offsetCenter: [0, '40%'], color: '#ffffff', fontSize: 28, fontWeight: 700, formatter: '{value}%' },
+      axisLabel: { color: th.axisColor, fontSize: 10 },
+      title: { offsetCenter: [0, '70%'], color: th.axisColor, fontSize: 13 },
+      detail: { offsetCenter: [0, '40%'], color: th.detailColor, fontSize: 28, fontWeight: 700, formatter: '{value}%' },
     }],
   }
 }
