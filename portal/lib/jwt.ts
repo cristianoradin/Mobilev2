@@ -12,7 +12,9 @@ export async function generateAgentJWT(cliente: Cliente): Promise<string> {
 
   if (privateKeyPem) {
     // Produção: assina com RS256 usando a chave privada do servidor
-    const privateKey = await importPKCS8(privateKeyPem, 'RS256')
+    // Normaliza \n literais (do docker-compose env) para quebras de linha reais
+    const normalizedKey = privateKeyPem.replace(/\\n/g, '\n')
+    const privateKey = await importPKCS8(normalizedKey, 'RS256')
     return new SignJWT({
       cnpj:     cliente.cnpj,
       empresas: cliente.empresas.map(e => e.id),
