@@ -41,6 +41,7 @@ agent/data/
 agent/*.db
 agent/*.sqlite
 # Binários compilados
+agent/agent
 agent/sga-agent
 agent/sga-agent-*
 # Arquivo de config real (use config.example.json como template)
