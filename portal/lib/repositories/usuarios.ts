@@ -27,6 +27,7 @@ export interface Usuario {
   clienteId:   string
   email:       string
   nome:        string
+  telefone:    string
   role:        UserRole
   ativo:       boolean
   ultimoLogin: string | null
@@ -37,6 +38,7 @@ export interface CreateUsuarioInput {
   cliente_id: string
   email:      string
   nome:       string
+  telefone:   string
   role:       UserRole
   senha:      string
 }
@@ -45,7 +47,7 @@ export interface CreateUsuarioInput {
 export async function listUsuariosByCliente(clienteId: string): Promise<Usuario[]> {
   const sql = getDb()
   const rows = await sql`
-    SELECT id, cliente_id, email, nome, role, ativo, ultimo_login, created_at
+    SELECT id, cliente_id, email, nome, telefone, role, ativo, ultimo_login, created_at
     FROM   usuarios
     WHERE  cliente_id = ${clienteId}
     ORDER  BY nome
@@ -56,7 +58,7 @@ export async function listUsuariosByCliente(clienteId: string): Promise<Usuario[
 export async function findUsuarioByEmailGlobal(email: string): Promise<(Usuario & { senhaHash: string }) | null> {
   const sql = getDb()
   const rows = await sql`
-    SELECT id, cliente_id, email, nome, role, ativo, ultimo_login, created_at, senha_hash
+    SELECT id, cliente_id, email, nome, telefone, role, ativo, ultimo_login, created_at, senha_hash
     FROM   usuarios
     WHERE  email = ${email.toLowerCase()}
     AND    ativo = true
@@ -71,9 +73,9 @@ export async function createUsuario(input: CreateUsuarioInput): Promise<Usuario>
   const senhaHash = hashPassword(input.senha)
 
   const rows = await sql`
-    INSERT INTO usuarios (cliente_id, email, nome, role, senha_hash)
-    VALUES (${input.cliente_id}, ${input.email.toLowerCase()}, ${input.nome}, ${input.role}, ${senhaHash})
-    RETURNING id, cliente_id, email, nome, role, ativo, ultimo_login, created_at
+    INSERT INTO usuarios (cliente_id, email, nome, telefone, role, senha_hash)
+    VALUES (${input.cliente_id}, ${input.email.toLowerCase()}, ${input.nome}, ${input.telefone}, ${input.role}, ${senhaHash})
+    RETURNING id, cliente_id, email, nome, telefone, role, ativo, ultimo_login, created_at
   `
   return rows[0] as unknown as Usuario
 }

@@ -37,6 +37,7 @@ CREATE TABLE usuarios (
   cliente_id    UUID         NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
   email         VARCHAR(200) NOT NULL,
   nome          VARCHAR(200) NOT NULL,
+  telefone      VARCHAR(20)  NOT NULL,
   role          VARCHAR(20)  NOT NULL DEFAULT 'operador'
                              CHECK (role IN ('operador', 'gerente', 'dono')),
   senha_hash    VARCHAR(200) NOT NULL,

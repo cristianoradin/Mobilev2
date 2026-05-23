@@ -24,12 +24,13 @@ export async function GET(_req: NextRequest, { params }: Params) {
 export async function POST(req: NextRequest, { params }: Params) {
   const { id: cliente_id } = await params
   try {
-    const body = await req.json() as { nome: string; email: string; role: UserRole; senha: string }
-    const { nome, email, role, senha } = body
+    const body = await req.json() as { nome: string; email: string; telefone: string; role: UserRole; senha: string }
+    const { nome, email, telefone, role, senha } = body
 
-    if (!nome?.trim())  return NextResponse.json({ error: 'Nome obrigatório' },   { status: 400 })
-    if (!email?.trim()) return NextResponse.json({ error: 'E-mail obrigatório' }, { status: 400 })
-    if (!senha?.trim()) return NextResponse.json({ error: 'Senha obrigatória' },  { status: 400 })
+    if (!nome?.trim())     return NextResponse.json({ error: 'Nome obrigatório' },     { status: 400 })
+    if (!email?.trim())    return NextResponse.json({ error: 'E-mail obrigatório' },   { status: 400 })
+    if (!telefone?.trim()) return NextResponse.json({ error: 'Telefone obrigatório' }, { status: 400 })
+    if (!senha?.trim())    return NextResponse.json({ error: 'Senha obrigatória' },    { status: 400 })
     if (!['operador', 'gerente', 'dono'].includes(role)) {
       return NextResponse.json({ error: 'Role inválida' }, { status: 400 })
     }
@@ -37,7 +38,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'Senha deve ter no mínimo 6 caracteres' }, { status: 400 })
     }
 
-    const usuario = await createUsuario({ cliente_id, nome: nome.trim(), email: email.trim(), role, senha })
+    const usuario = await createUsuario({ cliente_id, nome: nome.trim(), email: email.trim(), telefone: telefone.trim(), role, senha })
     return NextResponse.json({ usuario }, { status: 201 })
   } catch (err) {
     const msg = String(err)

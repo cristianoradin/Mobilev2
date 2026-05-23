@@ -70,7 +70,7 @@ export default function ClientesPage() {
   const [usuarios,          setUsuarios]          = useState<Usuario[]>([])
   const [carregandoUsers,   setCarregandoUsers]   = useState(false)
   const [modalUsuario,      setModalUsuario]      = useState(false)
-  const [formUser,          setFormUser]          = useState({ nome: '', email: '', role: 'operador' as UserRole, senha: '' })
+  const [formUser,          setFormUser]          = useState({ nome: '', email: '', telefone: '', role: 'operador' as UserRole, senha: '' })
   const [salvandoUser,      setSalvandoUser]      = useState(false)
   const [erroUser,          setErroUser]          = useState<string | null>(null)
 
@@ -111,7 +111,7 @@ export default function ClientesPage() {
       if (!res.ok) { setErroUser(data.error ?? 'Erro ao salvar'); return }
       if (data.usuario) setUsuarios(prev => [...prev, data.usuario!])
       setModalUsuario(false)
-      setFormUser({ nome: '', email: '', role: 'operador', senha: '' })
+      setFormUser({ nome: '', email: '', telefone: '', role: 'operador', senha: '' })
     } catch {
       setErroUser('Falha na comunicação com o servidor')
     } finally {
@@ -445,6 +445,17 @@ export default function ClientesPage() {
                   placeholder="joao@posto.com.br"
                   value={formUser.email}
                   onChange={e => setFormUser(f => ({ ...f, email: e.target.value }))}
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="text-white/60 text-xs mb-1 block">Telefone *</label>
+                <Input
+                  type="tel"
+                  placeholder="(11) 9 9999-0000"
+                  value={formUser.telefone}
+                  onChange={e => setFormUser(f => ({ ...f, telefone: e.target.value }))}
                   required
                 />
               </div>
