@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -20,6 +21,24 @@ import (
 	"github.com/sga-petro/agent/internal/mqtt"
 	"github.com/sga-petro/agent/internal/query"
 )
+
+// exeDir retorna o diretório onde o executável está — funciona em Windows Service
+// (onde o working directory pode ser System32 ou outro caminho inesperado)
+func exeDir() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return "."
+	}
+	return filepath.Dir(exe)
+}
+
+// resolvePath torna um caminho relativo absoluto em relação ao diretório do exe
+func resolvePath(p string) string {
+	if filepath.IsAbs(p) {
+		return p
+	}
+	return filepath.Join(exeDir(), p)
+}
 
 const version = "1.0.0"
 
@@ -159,8 +178,8 @@ func (p *program) Stop(_ service.Service) error {
 }
 
 func main() {
-	// Determina o arquivo de config (argumento ou padrão)
-	cfgPath := "config.json"
+	// Determina o arquivo de config (argumento ou padrão relativo ao exe)
+	cfgPath := resolvePath("config.json")
 	if len(os.Args) > 1 && os.Args[1] != "install" && os.Args[1] != "uninstall" && os.Args[1] != "start" && os.Args[1] != "stop" {
 		cfgPath = os.Args[1]
 	}
@@ -170,7 +189,11 @@ func main() {
 		log.Fatalf("ERRO ao carregar configuração: %v\n\nCrie um config.json baseado no config.example.json", err)
 	}
 
-	logger := buildLogger(cfg.Log.Level)
+	// Resolve caminhos relativos em relação ao diretório do executável
+	cfg.Log.Path   = resolvePath(cfg.Log.Path)
+	cfg.Cache.Path = resolvePath(cfg.Cache.Path)
+
+	logger := buildLogger(cfg.Log.Level, cfg.Log.Path)
 	defer logger.Sync() //nolint:errcheck
 
 	svcConfig := &service.Config{
@@ -203,7 +226,7 @@ func main() {
 	}
 }
 
-func buildLogger(level string) *zap.Logger {
+func buildLogger(level, logPath string) *zap.Logger {
 	lvl := zapcore.InfoLevel
 	switch level {
 	case "debug":
@@ -228,7 +251,7 @@ func buildLogger(level string) *zap.Logger {
 			EncodeCaller:   zapcore.ShortCallerEncoder,
 			EncodeDuration: zapcore.StringDurationEncoder,
 		},
-		OutputPaths:      []string{"stdout", "./agent.log"},
+		OutputPaths:      []string{"stdout", logPath},
 		ErrorOutputPaths: []string{"stderr"},
 	}
 

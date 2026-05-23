@@ -1,0 +1,47 @@
+{
+  "agent_id": "COLE_AQUI_UM_UUID_UNICO",
+  "cliente_cnpj": "XX.XXX.XXX/0001-XX",
+  "jwt_token": "COLE_AQUI_O_TOKEN_GERADO_NO_PORTAL",
+
+  "mqtt": {
+    "broker": "mqtts://mobilev2.gruposgapetro.com.br:8883",
+    "client_id": "agent-CNPJ_SEM_PONTUACAO",
+    "username": "",
+    "password": "",
+    "keep_alive_seconds": 30,
+    "reconnect_wait_seconds": 5
+  },
+
+  "database": {
+    "host": "localhost",
+    "port": 5432,
+    "name": "NOME_DO_BANCO",
+    "user": "sga_readonly",
+    "password": "SENHA_DO_USUARIO",
+    "ssl_mode": "disable",
+    "max_connections": 5,
+    "query_timeout_seconds": 30
+  },
+
+  "cache": {
+    "path": "agent.db",
+    "max_age_minutes": 15,
+    "vacuum_interval_hours": 24
+  },
+
+  "log": {
+    "level": "info",
+    "path": "agent.log",
+    "max_size_mb": 50,
+    "max_backups": 3
+  },
+
+  "portal": {
+    "url": "https://mobilev2.gruposgapetro.com.br:4443",
+    "push_secret": ""
+  },
+
+  "http": {
+    "port": 8765
+  }
+}
