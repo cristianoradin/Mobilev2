@@ -1,8 +1,8 @@
 /**
- * GET /api/licencas
- * Retorna clientes com dados de licença e contagem de usuários ativos.
+ * GET  /api/licencas — lista clientes com dados de licença
+ * POST /api/licencas — cria nova licença para um cliente
  */
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
 
 export interface LicencaItem {
@@ -60,5 +60,41 @@ export async function GET() {
   } catch (err) {
     console.error('[GET /api/licencas]', err)
     return NextResponse.json({ licencas: [] })
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json() as {
+      cliente_id:      string
+      plano:           string
+      max_usuarios:    number
+      max_graficos:    number
+      data_expiracao?: string | null
+    }
+
+    if (!body.cliente_id) {
+      return NextResponse.json({ error: 'cliente_id obrigatório' }, { status: 400 })
+    }
+
+    const sql = getDb()
+
+    const [row] = await sql`
+      INSERT INTO licencas (cliente_id, plano, ativa, data_inicio, data_expiracao, max_usuarios, max_graficos)
+      VALUES (
+        ${body.cliente_id}::uuid,
+        ${body.plano},
+        true,
+        NOW(),
+        ${body.data_expiracao ?? null}::timestamptz,
+        ${body.max_usuarios},
+        ${body.max_graficos}
+      )
+      RETURNING id
+    `
+    return NextResponse.json({ ok: true, id: row.id })
+  } catch (err) {
+    console.error('[POST /api/licencas]', err)
+    return NextResponse.json({ error: 'Erro interno' }, { status: 500 })
   }
 }
