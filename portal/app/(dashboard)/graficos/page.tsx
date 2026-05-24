@@ -11,7 +11,6 @@ import { useToast, Toaster } from '@/components/ui/Toast'
 import { Plus, BarChart3, LineChart, PieChart, Gauge, TrendingUp, Edit2, Trash2, Copy,
   TableProperties, Flame, Layers, MousePointerClick, Globe, Lock, Users, Fuel, Search } from 'lucide-react'
 import type { ChartMetadata } from '@/lib/types'
-import { SYSTEM_TEMPLATES } from '@/lib/templates'
 
 const ICON_MAP: Record<string, React.ElementType> = {
   line:      LineChart,
@@ -53,25 +52,22 @@ const COLOR_CAT: Record<string, 'success' | 'info' | 'warning' | 'purple' | 'def
 export default function GraficosPage() {
   const router = useRouter()
   const { toasts, toast, dismiss } = useToast()
-  const [liberacoes, setLiberacoes] = useState<Record<string, LiberacaoState>>(() =>
-    Object.fromEntries(SYSTEM_TEMPLATES.map(t => [t.id, { is_publico: false, cliente_ids: [] }]))
-  )
+  const [liberacoes, setLiberacoes] = useState<Record<string, LiberacaoState>>({})
   const [modalItem, setModalItem] = useState<ChartMetadata | null>(null)
   const [customGraficos, setCustomGraficos] = useState<ChartMetadata[]>([])
+  const [carregando, setCarregando] = useState(true)
   const [duplicando, setDuplicando] = useState<string | null>(null)
   const [deletando, setDeletando]   = useState<string | null>(null)
   const [busca,     setBusca]       = useState('')
 
-  const allGraficos = [...SYSTEM_TEMPLATES, ...customGraficos]
-
   const templatesFiltrados = busca.trim()
-    ? allGraficos.filter(t =>
+    ? customGraficos.filter(t =>
         t.nome.toLowerCase().includes(busca.toLowerCase()) ||
         t.categoria.toLowerCase().includes(busca.toLowerCase()) ||
         t.chart_type.toLowerCase().includes(busca.toLowerCase()) ||
         (t.descricao ?? '').toLowerCase().includes(busca.toLowerCase())
       )
-    : allGraficos
+    : customGraficos
 
   async function duplicar(tmpl: ChartMetadata) {
     setDuplicando(tmpl.id)
@@ -87,39 +83,22 @@ export default function GraficosPage() {
     }
   }
 
-  // Carrega estado de liberação do banco ao montar
+  // Carrega gráficos criados no DB
   useEffect(() => {
-    // Liberações de templates do sistema
-    fetch('/api/graficos/liberacoes')
-      .then(r => r.json())
-      .then((data: { liberacoes: Record<string, { is_publico: boolean; cliente_ids: string[] }> }) => {
-        if (data.liberacoes) {
-          setLiberacoes(prev => {
-            const next = { ...prev }
-            for (const [key, val] of Object.entries(data.liberacoes)) {
-              next[key] = { is_publico: val.is_publico, cliente_ids: val.cliente_ids }
-            }
-            return next
-          })
-        }
-      })
-      .catch(() => {})
-
-    // Graficos customizados criados pelo admin (armazenados no DB)
+    setCarregando(true)
     fetch('/api/graficos')
       .then(r => r.json())
       .then((data: { graficos: ChartMetadata[] }) => {
         const list = data.graficos ?? []
         setCustomGraficos(list)
-        // Inicializa liberações a partir dos próprios dados do DB
-        setLiberacoes(prev => ({
-          ...prev,
-          ...Object.fromEntries(
+        setLiberacoes(
+          Object.fromEntries(
             list.map(g => [g.id, { is_publico: g.is_publico, cliente_ids: g.cliente_ids ?? [] }])
-          ),
-        }))
+          )
+        )
       })
       .catch(() => {})
+      .finally(() => setCarregando(false))
   }, [])
 
   async function deletar(tmpl: ChartMetadata) {
@@ -158,7 +137,7 @@ export default function GraficosPage() {
     <div>
       <TopBar
         title="Templates de Gráficos"
-        subtitle={`${allGraficos.length} template(s)`}
+        subtitle={carregando ? 'Carregando…' : `${customGraficos.length} template(s) criado(s)`}
         actions={
           <Link href="/graficos/novo">
             <Button size="sm"><Plus size={14} />Novo Template</Button>
@@ -167,15 +146,40 @@ export default function GraficosPage() {
       />
 
       <div className="p-8">
-        {/* Busca */}
-        <div className="relative mb-5 max-w-sm">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
-          <input
-            value={busca} onChange={e => setBusca(e.target.value)}
-            placeholder="Buscar por nome, tipo, categoria..."
-            className="w-full bg-white/5 border border-white/10 rounded-xl pl-9 pr-4 py-2.5 text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-white/25 transition-all"
-          />
-        </div>
+        {/* Carregando */}
+        {carregando && (
+          <div className="flex items-center justify-center py-20">
+            <div className="w-6 h-6 border-2 border-white/20 border-t-white/60 rounded-full animate-spin" />
+          </div>
+        )}
+
+        {/* Vazio */}
+        {!carregando && customGraficos.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-20 gap-4">
+            <div className="w-16 h-16 bg-white/5 border border-white/10 rounded-2xl flex items-center justify-center">
+              <BarChart3 size={28} className="text-white/20" />
+            </div>
+            <div className="text-center">
+              <p className="text-white/40 text-sm font-medium">Nenhum template criado ainda</p>
+              <p className="text-white/20 text-xs mt-1">Clique em "Novo Template" para criar o primeiro gráfico.</p>
+            </div>
+            <Link href="/graficos/novo">
+              <Button size="sm"><Plus size={14} />Criar primeiro template</Button>
+            </Link>
+          </div>
+        )}
+
+        {/* Busca — só quando há gráficos */}
+        {!carregando && customGraficos.length > 0 && (
+          <div className="relative mb-5 max-w-sm">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
+            <input
+              value={busca} onChange={e => setBusca(e.target.value)}
+              placeholder="Buscar por nome, tipo, categoria..."
+              className="w-full bg-white/5 border border-white/10 rounded-xl pl-9 pr-4 py-2.5 text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-white/25 transition-all"
+            />
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-5">
           {templatesFiltrados.map(tmpl => {

@@ -1,4 +1,4 @@
-import { RefreshCw, AlertTriangle } from 'lucide-react'
+import { RefreshCw, AlertTriangle, WifiOff } from 'lucide-react'
 import { DynamicChart } from '@/components/charts/DynamicChart'
 import { Card }   from '@/components/ui/Card'
 import { Badge }  from '@/components/ui/Badge'
@@ -12,13 +12,6 @@ const metadataTanques: ChartMetadata = {
   display: { height: 'sm', show_legend: false, show_tooltip: false },
   permissions: { min_role: 'operador' },
 }
-
-const mockTanques = [
-  { id: 1, nome: 'Gasolina Comum',     nivel: 72, capacidade: 15000, litros: 10800, cor: '#009c3b' },
-  { id: 2, nome: 'Gasolina Aditivada', nivel: 45, capacidade: 10000, litros: 4500,  cor: '#fbbf24' },
-  { id: 3, nome: 'Etanol',             nivel: 88, capacidade: 12000, litros: 10560, cor: '#3b82f6' },
-  { id: 4, nome: 'Diesel S10',         nivel: 18, capacidade: 20000, litros: 3600,  cor: '#ef4444' },
-]
 
 type Tanque = { id: number; nome: string; nivel: number; capacidade: number; litros: number; cor: string }
 
@@ -39,9 +32,10 @@ function corParaNivel(nivel: number) {
 }
 
 export function EstoqueScreen() {
-  const { data, loading, refresh } = useChartData(metadataTanques)
+  const { data, loading, refresh, agentOnline } = useChartData(metadataTanques)
 
-  const tanques: Tanque[] = data && data.length > 0
+  const offline  = !agentOnline && !loading
+  const tanques: Tanque[] = (data && data.length > 0)
     ? data.map((r, i) => ({
         id:         i + 1,
         nome:       String(r.nome ?? r.tanque ?? `Tanque ${i + 1}`),
@@ -50,7 +44,7 @@ export function EstoqueScreen() {
         litros:     Number(r.litros ?? r.volume ?? 0),
         cor:        corParaNivel(Number(r.nivel ?? 0)),
       }))
-    : mockTanques
+    : []
 
   const criticos = tanques.filter(t => t.nivel <= 20)
 
@@ -60,7 +54,7 @@ export function EstoqueScreen() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-ink">Estoque</h1>
-          <p className="text-ink/40 text-sm">Nível dos tanques</p>
+          <p className="text-ink/40 text-sm">{offline ? 'Agente offline' : 'Nível dos tanques'}</p>
         </div>
         <button
           onClick={() => refresh(true)}
@@ -70,58 +64,89 @@ export function EstoqueScreen() {
         </button>
       </div>
 
-      {/* Alerta de críticos */}
-      {criticos.length > 0 && (
-        <div className="bg-danger/10 border border-danger/30 rounded-2xl p-4 flex items-start gap-3">
-          <AlertTriangle size={18} className="text-danger flex-shrink-0 mt-0.5" />
-          <div>
-            <p className="text-danger font-semibold text-sm">Nível Crítico</p>
-            <p className="text-ink/60 text-xs mt-0.5">
-              {criticos.map(t => t.nome).join(', ')} abaixo de 20%
+      {/* Agente offline */}
+      {offline && (
+        <div className="flex flex-col items-center justify-center py-16 gap-4">
+          <div className="w-16 h-16 bg-surface border border-rim rounded-2xl flex items-center justify-center">
+            <WifiOff size={28} className="text-ink/20" />
+          </div>
+          <div className="text-center">
+            <p className="text-ink/50 text-sm font-medium">Agente não conectado</p>
+            <p className="text-ink/25 text-xs mt-1 max-w-xs">
+              Instale o agente no computador do posto para visualizar o nível dos tanques.
             </p>
           </div>
         </div>
       )}
 
-      {/* Gauges */}
-      <div className="grid grid-cols-2 gap-3">
-        {tanques.map(t => {
-          const status = getNivelStatus(t.nivel)
-          return (
-            <Card key={t.id} className="p-4">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-ink/70 text-xs font-medium truncate pr-1">{t.nome}</p>
-                <Badge variant={status.variant} size="sm">{status.label}</Badge>
+      {/* Conteúdo real */}
+      {!offline && (
+        <>
+          {/* Alerta de críticos */}
+          {criticos.length > 0 && (
+            <div className="bg-danger/10 border border-danger/30 rounded-2xl p-4 flex items-start gap-3">
+              <AlertTriangle size={18} className="text-danger flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-danger font-semibold text-sm">Nível Crítico</p>
+                <p className="text-ink/60 text-xs mt-0.5">
+                  {criticos.map(t => t.nome).join(', ')} abaixo de 20%
+                </p>
               </div>
-              <DynamicChart metadata={buildGaugeMeta(t)} data={[{ nome: t.nome, nivel: t.nivel }]} loading={loading} />
-              <p className="text-ink/40 text-xs text-center mt-2">
-                {t.litros.toLocaleString('pt-BR')} / {t.capacidade.toLocaleString('pt-BR')} L
-              </p>
-            </Card>
-          )
-        })}
-      </div>
-
-      {/* Tabela resumo */}
-      <Card className="overflow-hidden">
-        <div className="px-4 py-3 border-b border-rim">
-          <h2 className="text-sm font-semibold text-ink">Resumo dos Tanques</h2>
-        </div>
-        <div className="divide-y divide-rim">
-          {tanques.map(t => (
-            <div key={t.id} className="flex items-center px-4 py-3 gap-3">
-              <div className="flex-1 min-w-0">
-                <p className="text-ink text-sm font-medium truncate">{t.nome}</p>
-                <p className="text-ink/40 text-xs">{t.litros.toLocaleString('pt-BR')} litros</p>
-              </div>
-              <div className="w-20 bg-rim rounded-full h-2">
-                <div className="h-2 rounded-full transition-all" style={{ width: `${t.nivel}%`, backgroundColor: t.cor }} />
-              </div>
-              <span className="text-ink font-semibold text-sm w-10 text-right">{t.nivel}%</span>
             </div>
-          ))}
-        </div>
-      </Card>
+          )}
+
+          {/* Sem dados ainda */}
+          {!loading && tanques.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-10 gap-3">
+              <p className="text-ink/30 text-sm">Sem dados de estoque disponíveis</p>
+            </div>
+          )}
+
+          {/* Gauges */}
+          {tanques.length > 0 && (
+            <div className="grid grid-cols-2 gap-3">
+              {tanques.map(t => {
+                const status = getNivelStatus(t.nivel)
+                return (
+                  <Card key={t.id} className="p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-ink/70 text-xs font-medium truncate pr-1">{t.nome}</p>
+                      <Badge variant={status.variant} size="sm">{status.label}</Badge>
+                    </div>
+                    <DynamicChart metadata={buildGaugeMeta(t)} data={[{ nome: t.nome, nivel: t.nivel }]} loading={loading} />
+                    <p className="text-ink/40 text-xs text-center mt-2">
+                      {t.litros.toLocaleString('pt-BR')} / {t.capacidade.toLocaleString('pt-BR')} L
+                    </p>
+                  </Card>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Tabela resumo */}
+          {tanques.length > 0 && (
+            <Card className="overflow-hidden">
+              <div className="px-4 py-3 border-b border-rim">
+                <h2 className="text-sm font-semibold text-ink">Resumo dos Tanques</h2>
+              </div>
+              <div className="divide-y divide-rim">
+                {tanques.map(t => (
+                  <div key={t.id} className="flex items-center px-4 py-3 gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-ink text-sm font-medium truncate">{t.nome}</p>
+                      <p className="text-ink/40 text-xs">{t.litros.toLocaleString('pt-BR')} litros</p>
+                    </div>
+                    <div className="w-20 bg-rim rounded-full h-2">
+                      <div className="h-2 rounded-full transition-all" style={{ width: `${t.nivel}%`, backgroundColor: t.cor }} />
+                    </div>
+                    <span className="text-ink font-semibold text-sm w-10 text-right">{t.nivel}%</span>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+        </>
+      )}
     </div>
   )
 }

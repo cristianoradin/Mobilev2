@@ -90,7 +90,7 @@ const menuItems = [
   { icon: TrendingUp,     label: 'Vendas',         sub: 'Relatório do dia',           color: '#009c3b', bg: '#009c3b20', route: '/vendas',      badge: null },
   { icon: Fuel,           label: 'Estoque',        sub: 'Nível dos tanques',          color: '#3b82f6', bg: '#3b82f620', route: '/estoque',     badge: null },
   { icon: DollarSign,     label: 'Troca de Preço', sub: 'Atualizar valores',          color: '#f97316', bg: '#f9731620', route: '/preco',       badge: null },
-  { icon: Shield,         label: 'Autorizações',   sub: 'Descontos pendentes',        color: '#fbbf24', bg: '#fbbf2420', route: '/auth',        badge: '2'  },
+  { icon: Shield,         label: 'Autorizações',   sub: 'Descontos pendentes',        color: '#fbbf24', bg: '#fbbf2420', route: '/auth',        badge: null },
   { icon: BarChart3,      label: 'Gráficos',       sub: 'Templates disponíveis',      color: '#6366f1', bg: '#6366f120', route: '/graficos',    badge: null },
   { icon: PanelsTopLeft,  label: 'Dashboards',     sub: 'Painéis liberados',          color: '#ec4899', bg: '#ec489920', route: '/dashboards',  badge: null },
   { icon: Settings,       label: 'Configurações',  sub: 'Conta e preferências',       color: '#64748b', bg: '#64748b20', route: '/config',      badge: null },
@@ -121,19 +121,16 @@ export function HomeScreen() {
         </div>
       </div>
 
-      {/* KPIs rápidos */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="bg-surface border border-rim rounded-2xl p-4">
-          <p className="text-ink/50 text-xs mb-1">Vendas Hoje</p>
-          <p className="text-2xl font-bold text-ink">R$ 12.847</p>
-          <p className="text-primary text-xs mt-1">+8.3% vs ontem</p>
+      {/* Status do agente — só aparece quando offline */}
+      {!connected && (
+        <div className="bg-surface border border-rim rounded-2xl p-4 flex items-center gap-3">
+          <div className="w-2 h-2 rounded-full bg-danger animate-pulse flex-shrink-0" />
+          <div>
+            <p className="text-ink/70 text-sm font-medium">Agente offline</p>
+            <p className="text-ink/40 text-xs">Sem dados em tempo real. Conecte o agente no posto.</p>
+          </div>
         </div>
-        <div className="bg-surface border border-rim rounded-2xl p-4">
-          <p className="text-ink/50 text-xs mb-1">Litros Vendidos</p>
-          <p className="text-2xl font-bold text-ink">2.341 L</p>
-          <p className="text-blue text-xs mt-1">4 bicos ativos</p>
-        </div>
-      </div>
+      )}
 
       {/* Menu Principal */}
       <div>
