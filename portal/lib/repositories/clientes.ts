@@ -22,10 +22,21 @@ export async function listClientes(): Promise<Cliente[]> {
           ORDER BY e.is_master DESC, e.nome
         ) FILTER (WHERE e.id IS NOT NULL),
         '[]'
-      ) AS empresas
+      ) AS empresas,
+      -- agente mais recente do cliente
+      a.status              AS agente_status,
+      a.ultimo_heartbeat::text AS agente_ultimo_heartbeat
     FROM clientes c
     LEFT JOIN empresas e ON e.cliente_id = c.id AND e.ativo = true
-    GROUP BY c.id
+    LEFT JOIN LATERAL (
+      SELECT status, ultimo_heartbeat
+      FROM   agentes
+      WHERE  cliente_id = c.id
+      ORDER  BY ultimo_heartbeat DESC NULLS LAST
+      LIMIT  1
+    ) a ON true
+    WHERE c.ativo = true
+    GROUP BY c.id, a.status, a.ultimo_heartbeat
     ORDER BY c.nome
   `
   return rows as unknown as Cliente[]

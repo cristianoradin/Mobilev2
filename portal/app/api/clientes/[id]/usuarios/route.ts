@@ -62,6 +62,33 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 }
 
+// PATCH /api/clientes/[id]/usuarios?usuario_id=xxx  — reseta senha
+export async function PATCH(req: NextRequest, { params }: Params) {
+  const { id: cliente_id } = await params
+  const usuario_id = req.nextUrl.searchParams.get('usuario_id')
+  if (!usuario_id) return NextResponse.json({ error: 'usuario_id obrigatório' }, { status: 400 })
+
+  try {
+    const { senha } = await req.json() as { senha: string }
+    if (!senha?.trim() || senha.length < 6) {
+      return NextResponse.json({ error: 'Senha deve ter no mínimo 6 caracteres' }, { status: 400 })
+    }
+
+    const { hashPassword } = await import('@/lib/repositories/usuarios')
+    const { getDb }        = await import('@/lib/db')
+    const sql   = getDb()
+    const hash  = hashPassword(senha)
+    await sql`
+      UPDATE usuarios SET senha_hash = ${hash}
+      WHERE id = ${usuario_id}::uuid AND cliente_id = ${cliente_id}::uuid
+    `
+    return NextResponse.json({ ok: true })
+  } catch (err) {
+    console.error('[PATCH usuario senha]', err)
+    return NextResponse.json({ error: 'Erro ao resetar senha' }, { status: 500 })
+  }
+}
+
 // DELETE /api/clientes/[id]/usuarios?usuario_id=xxx
 export async function DELETE(req: NextRequest, { params }: Params) {
   const { id: cliente_id } = await params

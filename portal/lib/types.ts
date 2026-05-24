@@ -115,6 +115,9 @@ export interface Cliente {
   ativo: boolean
   empresas: Empresa[]
   created_at: string
+  // agente (pode ser null se não instalado)
+  agente_status?:             'online' | 'offline' | 'degraded' | null
+  agente_ultimo_heartbeat?:   string | null
 }
 
 export interface AxisY {

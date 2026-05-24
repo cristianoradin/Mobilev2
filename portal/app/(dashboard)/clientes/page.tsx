@@ -13,7 +13,7 @@ import {
   Key, BarChart3, X, Loader2, Users, Trash2, UserPlus,
   LayoutDashboard, LineChart, PieChart, Gauge, TrendingUp, TableProperties,
   Flame, Layers, MousePointerClick, PanelsTopLeft,
-  Terminal, Copy, Check, Search,
+  Terminal, Copy, Check, Search, Wifi, WifiOff, Clock,
 } from 'lucide-react'
 
 // ── Tipo local de usuário ─────────────────────────────────────────────────────
@@ -30,6 +30,41 @@ interface Usuario {
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
+function tempoRelativo(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
+  if (diff < 60)   return `${diff}s atrás`
+  if (diff < 3600) return `${Math.floor(diff / 60)}min atrás`
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h atrás`
+  return `${Math.floor(diff / 86400)}d atrás`
+}
+
+function AgenteStatusBadge({ status, heartbeat }: { status?: string | null; heartbeat?: string | null }) {
+  if (!status) {
+    return (
+      <span className="flex items-center gap-1 text-white/25 text-xs">
+        <span className="w-1.5 h-1.5 rounded-full bg-white/20 flex-shrink-0" />
+        Sem agente
+      </span>
+    )
+  }
+  const isOnline = status === 'online'
+  return (
+    <span className={`flex items-center gap-1 text-xs ${isOnline ? 'text-[#009c3b]' : 'text-red-400'}`}>
+      {isOnline
+        ? <Wifi    size={11} className="flex-shrink-0" />
+        : <WifiOff size={11} className="flex-shrink-0" />}
+      {isOnline ? 'Online' : 'Offline'}
+      {heartbeat && (
+        <span className="flex items-center gap-0.5 text-white/30 ml-1">
+          <Clock size={9} />
+          {tempoRelativo(heartbeat)}
+        </span>
+      )}
+    </span>
+  )
+}
+
 const planoBadge: Record<string, 'success' | 'info' | 'purple'> = {
   basic:      'default' as 'success',
   pro:        'info',
@@ -178,6 +213,18 @@ export default function ClientesPage() {
     setUsuarios(prev => prev.filter(u => u.id !== userId))
   }
 
+  async function resetarSenha(userId: string) {
+    if (!selecionado) return
+    const novaSenha = prompt('Nova senha (mínimo 6 caracteres):')
+    if (!novaSenha || novaSenha.length < 6) { alert('Senha muito curta ou cancelada.'); return }
+    const res = await fetch(
+      `/api/clientes/${selecionado.id}/usuarios?usuario_id=${userId}`,
+      { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ senha: novaSenha }) }
+    )
+    if (res.ok) alert('Senha resetada com sucesso!')
+    else alert('Erro ao resetar senha.')
+  }
+
   // ── carrega clientes ──────────────────────────────────────────────────────
   const carregarClientes = useCallback(async () => {
     setCarregando(true)
@@ -321,7 +368,7 @@ export default function ClientesPage() {
                     </div>
 
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-0.5">
+                      <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                         <p className="text-white font-semibold text-sm">{cliente.nome}</p>
                         <Badge variant={cliente.ativo ? 'success' : 'danger'}>
                           {cliente.ativo ? 'Ativo' : 'Inativo'}
@@ -337,11 +384,17 @@ export default function ClientesPage() {
                           <span className="flex items-center gap-1"><Phone size={10} />{cliente.telefone}</span>
                         )}
                       </div>
-                      <p className="text-white/30 text-xs mt-1">
-                        {cliente.empresas.length} empresa{cliente.empresas.length !== 1 ? 's' : ''}
-                        {' · '}
-                        Cadastrado em {new Date(cliente.created_at).toLocaleDateString('pt-BR')}
-                      </p>
+                      <div className="flex items-center gap-3 mt-1">
+                        <p className="text-white/30 text-xs">
+                          {cliente.empresas.length} empresa{cliente.empresas.length !== 1 ? 's' : ''}
+                          {' · '}
+                          Cadastrado em {new Date(cliente.created_at).toLocaleDateString('pt-BR')}
+                        </p>
+                        <AgenteStatusBadge
+                          status={cliente.agente_status}
+                          heartbeat={cliente.agente_ultimo_heartbeat}
+                        />
+                      </div>
                     </div>
 
                     <ChevronRight size={16} className="text-white/20 flex-shrink-0" />
@@ -382,6 +435,13 @@ export default function ClientesPage() {
                     <div className="flex justify-between text-sm">
                       <span className="text-white/50">Empresas</span>
                       <span className="text-white">{selecionado.empresas.length}</span>
+                    </div>
+                    <div className="flex justify-between text-sm items-center">
+                      <span className="text-white/50">Agente</span>
+                      <AgenteStatusBadge
+                        status={selecionado.agente_status}
+                        heartbeat={selecionado.agente_ultimo_heartbeat}
+                      />
                     </div>
                   </div>
 
@@ -432,6 +492,13 @@ export default function ClientesPage() {
                               <Badge variant={u.role === 'dono' ? 'purple' : u.role === 'gerente' ? 'info' : 'default'}>
                                 {u.role}
                               </Badge>
+                              <button
+                                onClick={() => resetarSenha(u.id)}
+                                className="text-white/20 hover:text-amber-400 transition-colors flex-shrink-0"
+                                title="Resetar senha"
+                              >
+                                <Key size={11} />
+                              </button>
                               <button
                                 onClick={() => desativarUsuario(u.id)}
                                 className="text-white/20 hover:text-red-400 transition-colors flex-shrink-0"
