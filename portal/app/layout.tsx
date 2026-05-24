@@ -15,10 +15,6 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Portal Mobile | SGA Petro",
   description: "Portal administrativo SGA Petro — gestão de clientes, dashboards e gráficos",
-  icons: {
-    icon: "/logo.png",
-    apple: "/logo.png",
-  },
 };
 
 export default function RootLayout({
