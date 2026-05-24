@@ -1,5 +1,6 @@
 import { cookies }          from 'next/headers'
 import { Sidebar }          from '@/components/layout/Sidebar'
+import { HeartbeatProvider } from '@/components/layout/HeartbeatProvider'
 import { verifySessionToken, SESSION_COOKIE } from '@/lib/session'
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -14,6 +15,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
     <div className="flex min-h-screen bg-[#0d0d0d]">
       <Sidebar menusPermitidos={menus} isMaster={isMaster} />
       <main className="flex-1 overflow-auto">{children}</main>
+      {/* Mantém presença do admin atualizada em background */}
+      <HeartbeatProvider />
     </div>
   )
 }

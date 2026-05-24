@@ -5,7 +5,7 @@ import { Card, CardBody, CardHeader } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { DateRangePicker } from '@/components/ui/DateRangePicker'
 import type { DateRange } from '@/components/ui/DateRangePicker'
-import { Users, BarChart3, Activity, FileCheck, Wifi, WifiOff, Clock, Loader2 } from 'lucide-react'
+import { Users, BarChart3, Activity, FileCheck, Wifi, WifiOff, Clock, Loader2, CircleDot } from 'lucide-react'
 
 // ── Tipos ────────────────────────────────────────────────────────────────────
 interface Kpis {
@@ -35,6 +35,13 @@ interface Stats {
   kpis:      Kpis
   agentes:   Agente[]
   atividade: Atividade[]
+}
+
+interface AdminOnline {
+  id:           string
+  nome:         string
+  email:        string
+  last_seen_at: string
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -71,6 +78,7 @@ export default function DashboardPage() {
   const [stats,   setStats]   = useState<Stats | null>(null)
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState(false)
+  const [online,  setOnline]  = useState<AdminOnline[]>([])
 
   useEffect(() => {
     setLoading(true)
@@ -80,6 +88,16 @@ export default function DashboardPage() {
       .then((d: Stats) => setStats(d))
       .catch(() => setError(true))
       .finally(() => setLoading(false))
+
+    // Busca admins online
+    const carregarOnline = () =>
+      fetch('/api/auth/online')
+        .then(r => r.json())
+        .then((d: { online: AdminOnline[] }) => setOnline(d.online ?? []))
+        .catch(() => {})
+    carregarOnline()
+    const id = setInterval(carregarOnline, 30_000) // atualiza a cada 30s
+    return () => clearInterval(id)
   }, [])
 
   const fmtPeriod = () => {
@@ -227,38 +245,84 @@ export default function DashboardPage() {
             </Card>
           </div>
 
-          {/* ── Atividade Recente ── */}
-          <Card>
-            <CardHeader>
-              <h2 className="text-white font-semibold">Atividade Recente</h2>
-            </CardHeader>
-            <CardBody>
-              {loading ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 size={18} className="animate-spin text-white/40" />
+          {/* ── Coluna direita: Usuários Online + Atividade Recente ── */}
+          <div className="flex flex-col gap-5">
+
+            {/* Usuários Online */}
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <h2 className="text-white font-semibold">Usuários Online</h2>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-[#009c3b] animate-pulse" />
+                    <span className="text-white/40 text-xs">{online.length} ativo(s)</span>
+                  </div>
                 </div>
-              ) : !stats || stats.atividade.length === 0 ? (
-                <div className="py-6 text-center">
-                  <p className="text-white/25 text-sm">Nenhuma atividade registrada</p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {stats.atividade.map((item, i) => (
-                    <div key={i} className="flex items-start gap-3">
-                      <div className="w-1.5 h-1.5 rounded-full bg-white/20 mt-2 flex-shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className={`text-sm font-medium ${corAtividade(item.acao)}`}>{item.acao}</p>
-                        <p className="text-white/40 text-xs truncate">{item.detalhe}</p>
+              </CardHeader>
+              <CardBody>
+                {online.length === 0 ? (
+                  <div className="py-4 text-center">
+                    <CircleDot size={22} className="text-white/10 mx-auto mb-2" />
+                    <p className="text-white/25 text-xs">Nenhum usuário ativo no momento</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {online.map(u => (
+                      <div key={u.id} className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-[#009c3b]/20 flex items-center justify-center flex-shrink-0">
+                          <span className="text-[#009c3b] text-xs font-bold">
+                            {u.nome.charAt(0).toUpperCase()}
+                          </span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-white text-sm font-medium truncate">{u.nome}</p>
+                          <p className="text-white/35 text-xs truncate">{u.email}</p>
+                        </div>
+                        <div className="flex items-center gap-1 text-white/30 text-xs flex-shrink-0">
+                          <Clock size={10} />
+                          <span>{tempoRelativo(u.last_seen_at)}</span>
+                        </div>
                       </div>
-                      <span className="text-white/25 text-xs flex-shrink-0">
-                        {tempoRelativo(item.createdAt)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardBody>
-          </Card>
+                    ))}
+                  </div>
+                )}
+              </CardBody>
+            </Card>
+
+            {/* Atividade Recente */}
+            <Card className="flex-1">
+              <CardHeader>
+                <h2 className="text-white font-semibold">Atividade Recente</h2>
+              </CardHeader>
+              <CardBody>
+                {loading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 size={18} className="animate-spin text-white/40" />
+                  </div>
+                ) : !stats || stats.atividade.length === 0 ? (
+                  <div className="py-6 text-center">
+                    <p className="text-white/25 text-sm">Nenhuma atividade registrada</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {stats.atividade.map((item, i) => (
+                      <div key={i} className="flex items-start gap-3">
+                        <div className="w-1.5 h-1.5 rounded-full bg-white/20 mt-2 flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-sm font-medium ${corAtividade(item.acao)}`}>{item.acao}</p>
+                          <p className="text-white/40 text-xs truncate">{item.detalhe}</p>
+                        </div>
+                        <span className="text-white/25 text-xs flex-shrink-0">
+                          {tempoRelativo(item.createdAt)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardBody>
+            </Card>
+
+          </div>
 
         </div>
       </div>

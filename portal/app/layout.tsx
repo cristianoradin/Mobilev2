@@ -12,9 +12,32 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://mobilev2.gruposgapetro.com.br:4444'
+
 export const metadata: Metadata = {
-  title: "Portal Mobile | SGA Petro",
-  description: "Portal administrativo SGA Petro — gestão de clientes, dashboards e gráficos",
+  title:       "Mobile SGA Petro",
+  description: "Plataforma de gestão para postos de combustível — SGA Petro",
+  openGraph: {
+    title:       "Mobile SGA Petro",
+    description: "Plataforma de gestão para postos de combustível — SGA Petro",
+    siteName:    "SGA Petro",
+    type:        "website",
+    url:         BASE_URL,
+    images: [
+      {
+        url:    `${BASE_URL}/logo.png`,
+        width:  192,
+        height: 192,
+        alt:    "Logo SGA Petro",
+      },
+    ],
+  },
+  twitter: {
+    card:        "summary",
+    title:       "Mobile SGA Petro",
+    description: "Plataforma de gestão para postos de combustível",
+    images:      [`${BASE_URL}/logo.png`],
+  },
 };
 
 export default function RootLayout({
