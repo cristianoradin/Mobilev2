@@ -205,11 +205,11 @@ func writeConfig(tok *SetupToken, agentID, cnpj, dbHost string, dbPort int, dbNa
 	}
 	broker := tok.Broker
 	if broker == "" {
-		broker = "mqtts://mobilev2.gruposgapetro.com.br:8883"
+		broker = "mqtts://cloud.gruposgapetro.com.br:8883"
 	}
 	portalURL := tok.PortalURL
 	if portalURL == "" {
-		portalURL = "https://mobilev2.gruposgapetro.com.br:4444"
+		portalURL = "https://cloud.gruposgapetro.com.br"
 	}
 
 	cfg := map[string]interface{}{

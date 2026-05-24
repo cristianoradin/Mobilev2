@@ -206,6 +206,29 @@ func (p *program) Stop(_ service.Service) error {
 }
 
 func main() {
+	// ── Subcomando setup — deve ser tratado ANTES de carregar config.json ──────
+	// (config.json ainda não existe na máquina do cliente)
+	if len(os.Args) > 1 && os.Args[1] == "setup" {
+		token := ""
+		args := os.Args[2:]
+		for i, a := range args {
+			if a == "--token" || a == "-token" {
+				if i+1 < len(args) {
+					token = args[i+1]
+				}
+			} else if !strings.HasPrefix(a, "-") {
+				token = a
+			}
+		}
+		if token == "" {
+			fmt.Fprintln(os.Stderr, "Uso: sga-agent.exe setup <TOKEN>")
+			fmt.Fprintln(os.Stderr, "O token é gerado no portal em Clientes → Instalador.")
+			os.Exit(1)
+		}
+		setup.Run(token)
+		return
+	}
+
 	// Determina o arquivo de config (argumento ou padrão relativo ao exe)
 	cfgPath := resolvePath("config.json")
 	if len(os.Args) > 1 && os.Args[1] != "install" && os.Args[1] != "uninstall" && os.Args[1] != "start" && os.Args[1] != "stop" {
@@ -255,27 +278,6 @@ func main() {
 			fmt.Printf("Serviço %s executado com sucesso.\n", cmd)
 			return
 
-		case "setup":
-			// Instalação assistida: sga-agent.exe setup <TOKEN>
-			// ou: sga-agent.exe setup --token <TOKEN>
-			token := ""
-			args := os.Args[2:]
-			for i, a := range args {
-				if a == "--token" || a == "-token" {
-					if i+1 < len(args) {
-						token = args[i+1]
-					}
-				} else if !strings.HasPrefix(a, "-") {
-					token = a
-				}
-			}
-			if token == "" {
-				fmt.Fprintln(os.Stderr, "Uso: sga-agent.exe setup <TOKEN>")
-				fmt.Fprintln(os.Stderr, "O token é gerado no portal em Clientes → Instalador.")
-				os.Exit(1)
-			}
-			setup.Run(token)
-			return
 		}
 	}
 
