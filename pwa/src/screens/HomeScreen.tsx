@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { TrendingUp, Fuel, DollarSign, Shield, Settings, ChevronRight,
-  BarChart3, PanelsTopLeft, X, Megaphone } from 'lucide-react'
+  BarChart3, PanelsTopLeft, Megaphone } from 'lucide-react'
 import { useAuth } from '@/core/auth/AuthContext'
 import { useMQTT } from '@/core/mqtt/MQTTContext'
 import { Badge }   from '@/components/ui/Badge'
@@ -16,8 +16,7 @@ interface PropagandaData {
   duracao_horas: number
 }
 
-const API_URL = import.meta.env.VITE_API_URL ?? 'https://mobilev2.gruposgapetro.com.br:4443'
-const DISMISSED_KEY = 'sga_propaganda_dismissed'
+const API_URL = import.meta.env.VITE_API_URL ?? 'https://cloud.gruposgapetro.com.br'
 
 // ─── Banner de propaganda ─────────────────────────────────────────────────────
 function PropagandaBanner({ session }: { session: { jwt: string } | null }) {
@@ -35,29 +34,26 @@ function PropagandaBanner({ session }: { session: { jwt: string } | null }) {
         const p = d.propaganda
         if (!p) return
 
-        // Verifica se foi dispensada
-        const dismissed: string[] = JSON.parse(localStorage.getItem(DISMISSED_KEY) ?? '[]')
-        if (dismissed.includes(p.id)) return
-
         setProp(p)
         setVisible(true)
+
+        // Esconde automaticamente quando a propaganda expirar
+        if (p.expires_at) {
+          const msLeft = new Date(p.expires_at).getTime() - Date.now()
+          if (msLeft > 0) {
+            const timer = setTimeout(() => setVisible(false), msLeft)
+            return () => clearTimeout(timer)
+          }
+        }
       })
       .catch(() => {})
   }, [session?.jwt])
 
-  function dismiss() {
-    setVisible(false)
-    if (!prop) return
-    const dismissed: string[] = JSON.parse(localStorage.getItem(DISMISSED_KEY) ?? '[]')
-    dismissed.push(prop.id)
-    // Mantém só os últimos 20 IDs
-    localStorage.setItem(DISMISSED_KEY, JSON.stringify(dismissed.slice(-20)))
-  }
-
   if (!visible || !prop) return null
 
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-primary/25 bg-surface shadow-lg shadow-primary/5 animate-fade-in">
+    // A propaganda não pode ser fechada pelo usuário — respeita a duração definida no portal
+    <div className="overflow-hidden rounded-2xl border border-primary/25 bg-surface shadow-lg shadow-primary/5 animate-fade-in">
       {/* Imagem */}
       {prop.imagem && !imgError && (
         <div className="relative w-full h-40 overflow-hidden">
@@ -86,14 +82,6 @@ function PropagandaBanner({ session }: { session: { jwt: string } | null }) {
           </div>
         </div>
       </div>
-
-      {/* Botão fechar */}
-      <button
-        onClick={dismiss}
-        className="absolute top-2 right-2 w-7 h-7 bg-black/50 hover:bg-black/70 rounded-full flex items-center justify-center transition-all active:scale-90"
-      >
-        <X size={13} className="text-white/80" />
-      </button>
     </div>
   )
 }

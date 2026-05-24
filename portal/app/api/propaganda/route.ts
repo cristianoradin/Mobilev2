@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
         const payload = {
           title: body.titulo.trim(),
           body:  body.descricao?.trim() || 'Nova propaganda disponível no app',
-          icon:  '/logo.png',
+          icon:  '/icons/icon-192.png',
           badge: '/icons/icon-192.png',
           tag:   `propaganda-${row.id}`,
           data:  { type: 'propaganda', route: '/', propaganda_id: row.id },
