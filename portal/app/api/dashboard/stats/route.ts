@@ -17,7 +17,7 @@ export async function GET() {
         (SELECT COUNT(*)::int FROM agentes WHERE status = 'online')                        AS agentes_online,
         (SELECT COUNT(*)::int FROM agentes)                                                 AS agentes_total,
         (SELECT COUNT(*)::int FROM licencas WHERE ativa = true
-          AND (expires_at IS NULL OR expires_at > NOW()))                                   AS licencas_ativas
+          AND (data_expiracao IS NULL OR data_expiracao > NOW()))                           AS licencas_ativas
     `
 
     // ── Status dos agentes (com nome do cliente) ──────────────────────────────
