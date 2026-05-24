@@ -194,7 +194,7 @@ export default function ClientesPage() {
 
   useEffect(() => { carregarClientes() }, [carregarClientes])
 
-  // ── gera comando de instalação do agente ─────────────────────────────────
+  // ── gera token de instalação do agente ──────────────────────────────────
   async function gerarInstalador(cliente: Cliente) {
     setGerandoInstalador(true)
     setSetupCommand(null)
@@ -205,9 +205,9 @@ export default function ClientesPage() {
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ cliente_id: cliente.id }),
       })
-      const data = await res.json() as { command?: string; error?: string }
+      const data = await res.json() as { setup_token?: string; error?: string }
       if (!res.ok) { setSetupCommand(`ERRO: ${data.error ?? 'Falha ao gerar'}`) }
-      else         { setSetupCommand(data.command ?? '') }
+      else         { setSetupCommand(data.setup_token ?? '') }
     } catch {
       setSetupCommand('ERRO: falha na comunicação com o servidor')
     } finally {
@@ -478,53 +478,69 @@ export default function ClientesPage() {
                 </div>
               </Card>
 
-              {/* ── Instalador do Agente ── */}
+              {/* ── Token de Instalação do Agente ── */}
               <Card>
                 <div className="p-4">
-                  <div className="flex items-center gap-2 mb-1">
+                  <div className="flex items-center gap-2 mb-3">
                     <Terminal size={13} className="text-[#009c3b]" />
                     <p className="text-[#009c3b] text-xs font-semibold uppercase tracking-wider">
-                      Instalador do Agente
+                      Token de Instalação
                     </p>
                   </div>
-                  <p className="text-white/30 text-[10px] mb-3 leading-relaxed">
-                    O técnico digita banco, usuário e senha diretamente no Windows.
-                  </p>
 
                   <Button
                     variant="primary"
                     size="sm"
-                    className="w-full mb-3"
+                    className="w-full"
                     onClick={() => gerarInstalador(selecionado)}
                     loading={gerandoInstalador}
                   >
                     <Key size={13} />
-                    Gerar Token de Instalação
+                    Gerar Token
                   </Button>
 
-                  {setupCommand && (
-                    <div>
+                  {setupCommand && !setupCommand.startsWith('ERRO') && (
+                    <div className="mt-3">
+                      {/* Token */}
                       <div className="flex items-center justify-between mb-1.5">
-                        <p className="text-white/30 text-[10px] uppercase tracking-wider">
-                          PowerShell (como Administrador)
-                        </p>
+                        <p className="text-white/40 text-[10px] uppercase tracking-wider font-semibold">Token</p>
                         <button
                           onClick={copiarComando}
-                          className={`flex items-center gap-1 text-[10px] transition-colors px-2 py-0.5 rounded ${copiado ? 'text-[#009c3b]' : 'text-white/40 hover:text-white'}`}
+                          className={`flex items-center gap-1 text-[10px] font-medium transition-colors px-2 py-0.5 rounded-md border ${
+                            copiado
+                              ? 'text-[#009c3b] border-[#009c3b]/30 bg-[#009c3b]/10'
+                              : 'text-white/40 border-white/10 hover:text-white hover:border-white/20'
+                          }`}
                         >
                           {copiado ? <Check size={10} /> : <Copy size={10} />}
                           {copiado ? 'Copiado!' : 'Copiar'}
                         </button>
                       </div>
-                      <div className="bg-black/50 border border-white/8 rounded-lg p-3 max-h-40 overflow-y-auto">
-                        <pre className="text-green-400 text-[10px] leading-relaxed font-mono whitespace-pre-wrap break-all">
+                      <div
+                        className="bg-black/60 border border-white/10 rounded-xl p-3 cursor-pointer hover:border-white/20 transition-colors"
+                        onClick={copiarComando}
+                        title="Clique para copiar"
+                      >
+                        <p className="text-green-400 text-[11px] font-mono break-all leading-relaxed select-all">
                           {setupCommand}
-                        </pre>
+                        </p>
                       </div>
-                      <p className="text-white/25 text-[10px] mt-2 leading-relaxed">
-                        Cole no PowerShell do cliente — o instalador pergunta banco, usuário e senha.
+                      <p className="text-white/20 text-[10px] mt-2">
+                        Use: <span className="text-white/35 font-mono">sga-agent.exe setup &lt;TOKEN&gt;</span>
                       </p>
+                      <a
+                        href="/agent/sga-agent.exe"
+                        download
+                        className="flex items-center gap-1.5 mt-2 text-[10px] text-white/35 hover:text-white/60 transition-colors"
+                      >
+                        <Terminal size={9} />
+                        Baixar sga-agent.exe
+                      </a>
                     </div>
+                  )}
+
+                  {setupCommand?.startsWith('ERRO') && (
+                    <p className="mt-2 text-red-400 text-[10px]">{setupCommand}</p>
                   )}
                 </div>
               </Card>
