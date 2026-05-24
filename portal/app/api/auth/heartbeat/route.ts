@@ -14,13 +14,18 @@ export async function POST() {
     if (!token) return NextResponse.json({ ok: false }, { status: 401 })
 
     const session = await verifySessionToken(token)
-    if (!session?.id) return NextResponse.json({ ok: false }, { status: 401 })
+    if (!session) return NextResponse.json({ ok: false }, { status: 401 })
 
     const sql = getDb()
-    await sql`
-      UPDATE admins SET last_seen_at = NOW()
-      WHERE id = ${session.id}::uuid
-    `
+
+    if (session.id) {
+      // JWT moderno — id presente
+      await sql`UPDATE admins SET last_seen_at = NOW() WHERE id = ${session.id}::uuid`
+    } else if (session.email) {
+      // JWT antigo (sem id) — busca por email
+      await sql`UPDATE admins SET last_seen_at = NOW() WHERE email = ${session.email.toLowerCase()}`
+    }
+
     return NextResponse.json({ ok: true })
   } catch (err) {
     console.error('[heartbeat]', err)

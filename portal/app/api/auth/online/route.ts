@@ -19,7 +19,7 @@ export async function GET() {
       SELECT id, nome, email, last_seen_at::text
       FROM   admins
       WHERE  ativo = true
-        AND  last_seen_at > NOW() - INTERVAL '5 minutes'
+        AND  last_seen_at > NOW() - INTERVAL '10 minutes'
       ORDER  BY last_seen_at DESC
     `
     const online: AdminOnline[] = rows.map(r => ({
