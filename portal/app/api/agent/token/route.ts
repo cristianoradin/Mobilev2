@@ -17,7 +17,7 @@ import { generateAgentJWT } from '@/lib/jwt'
 import { findClienteSafe } from '@/lib/repositories/clientes'
 
 const BROKER      = process.env.MQTT_BROKER      ?? 'mqtts://cloud.gruposgapetro.com.br:8883'
-const PORTAL_URL  = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://cloud.gruposgapetro.com.br:3001'
+const PORTAL_URL  = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://mobilev2.gruposgapetro.com.br:4444'
 const PUSH_SECRET = process.env.PUSH_SECRET      ?? ''
 const AGENT_EXE_URL = `${PORTAL_URL}/agent/sga-agent.exe`
 
