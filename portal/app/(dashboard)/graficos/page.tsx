@@ -1,14 +1,17 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { TopBar } from '@/components/layout/TopBar'
 import { Card, CardBody } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { LiberarModal, type LiberacaoState } from '@/components/ui/LiberarModal'
+import { useToast, Toaster } from '@/components/ui/Toast'
 import { Plus, BarChart3, LineChart, PieChart, Gauge, TrendingUp, Edit2, Trash2, Copy,
-  TableProperties, Flame, Layers, MousePointerClick, Globe, Lock, Users } from 'lucide-react'
+  TableProperties, Flame, Layers, MousePointerClick, Globe, Lock, Users, Fuel, Search } from 'lucide-react'
 import type { ChartMetadata } from '@/lib/types'
+import { SYSTEM_TEMPLATES } from '@/lib/templates'
 
 const ICON_MAP: Record<string, React.ElementType> = {
   line:      LineChart,
@@ -21,6 +24,7 @@ const ICON_MAP: Record<string, React.ElementType> = {
   heatmap:   Layers,
   waterfall: BarChart3,
   button:    MousePointerClick,
+  tank:      Fuel,
 }
 
 // Cor de destaque por tipo (bg/text)
@@ -30,6 +34,7 @@ const TYPE_STYLE: Record<string, { bg: string; text: string; badge: 'success'|'i
   heatmap:   { bg: 'bg-purple-500/10  border-purple-500/20',  text: 'text-purple-400', badge: 'purple'  },
   waterfall: { bg: 'bg-cyan-500/10    border-cyan-500/20',    text: 'text-cyan-400',   badge: 'info'    },
   button:    { bg: 'bg-rose-500/10    border-rose-500/20',    text: 'text-rose-400',   badge: 'danger'  },
+  tank:      { bg: 'bg-emerald-500/10 border-emerald-500/20', text: 'text-emerald-400', badge: 'success' },
 }
 
 const TYPE_LABEL: Partial<Record<string, string>> = {
@@ -38,124 +43,103 @@ const TYPE_LABEL: Partial<Record<string, string>> = {
   heatmap:   'Heatmap',
   waterfall: 'Waterfall',
   button:    'Botões',
+  tank:      'Tanques',
 }
 const COLOR_CAT: Record<string, 'success' | 'info' | 'warning' | 'purple' | 'default'> = {
   vendas: 'success', estoque: 'info', financeiro: 'warning', operacional: 'purple', geral: 'default',
 }
 
-const MOCK_TEMPLATES: ChartMetadata[] = [
-  {
-    id: 'tmpl-001', nome: 'Vendas por Hora', descricao: 'Volume de vendas agrupado por hora do dia',
-    categoria: 'vendas', chart_type: 'area', is_publico: true,
-    query: { sql: 'SELECT hora, total FROM vendas WHERE empresa_id IN (:empresas_filtradas)', refresh_seconds: 300, timeout_seconds: 30 },
-    axes: { x: { field: 'hora', label: 'Hora' }, y: [{ field: 'total', label: 'Total R$', color: '#009c3b' }] },
-    display: { height: 'md', show_legend: true, show_tooltip: true },
-    permissions: { min_role: 'operador' }, created_at: '2026-05-10T10:00:00Z',
-  },
-  {
-    id: 'tmpl-002', nome: 'Nível dos Tanques', descricao: 'Percentual atual de combustível em cada tanque',
-    categoria: 'estoque', chart_type: 'gauge', is_publico: true,
-    query: { sql: 'SELECT nivel FROM tanques WHERE empresa_id IN (:empresas_filtradas)', refresh_seconds: 60, timeout_seconds: 15 },
-    axes: { x: { field: 'tanque', label: 'Tanque' }, y: [{ field: 'nivel', label: '%', color: '#3b82f6' }] },
-    display: { height: 'sm', show_legend: false, show_tooltip: false },
-    permissions: { min_role: 'operador' }, created_at: '2026-05-12T14:00:00Z',
-  },
-  {
-    id: 'tmpl-003', nome: 'Mix de Combustível', descricao: 'Participação % de cada combustível nas vendas',
-    categoria: 'vendas', chart_type: 'pie', is_publico: false,
-    query: { sql: 'SELECT tipo, sum(litros) as litros FROM vendas WHERE empresa_id IN (:empresas_filtradas) GROUP BY tipo', refresh_seconds: 300, timeout_seconds: 30 },
-    axes: { x: { field: 'tipo', label: 'Tipo' }, y: [{ field: 'litros', label: 'Litros', color: '#f97316' }] },
-    display: { height: 'sm', show_legend: true, show_tooltip: true },
-    permissions: { min_role: 'gerente' }, created_at: '2026-05-15T09:00:00Z',
-  },
-  {
-    id: 'tmpl-004', nome: 'Faturamento Mensal', descricao: 'Evolução do faturamento nos últimos 30 dias',
-    categoria: 'financeiro', chart_type: 'bar', is_publico: false,
-    query: { sql: 'SELECT data, total FROM faturamento WHERE empresa_id IN (:empresas_filtradas) AND data >= NOW()-30', refresh_seconds: 3600, timeout_seconds: 60 },
-    axes: { x: { field: 'data', label: 'Data' }, y: [{ field: 'total', label: 'Faturamento', color: '#fbbf24' }] },
-    display: { height: 'lg', show_legend: false, show_tooltip: true },
-    permissions: { min_role: 'dono' }, created_at: '2026-05-18T16:00:00Z',
-  },
-  {
-    id: 'tmpl-005', nome: 'Relatório de Vendas por Produto', descricao: 'Tabela detalhada de vendas agrupadas por combustível com totais',
-    categoria: 'vendas', chart_type: 'report', is_publico: true,
-    query: { sql: 'SELECT produto, SUM(litros) AS quantidade, SUM(total) AS total, AVG(margem)*100 AS margem, MAX(data) AS data FROM vendas WHERE empresa_id IN (:empresas_filtradas) GROUP BY produto ORDER BY total DESC', refresh_seconds: 300, timeout_seconds: 30 },
-    axes: { x: { field: 'produto', label: 'Produto' }, y: [{ field: 'total', label: 'Total' }] },
-    display: { height: 'lg', show_legend: false, show_tooltip: false },
-    permissions: { min_role: 'operador' },
-    report_config: {
-      columns: [
-        { field: 'produto',    label: 'Produto',       format: 'text',     align: 'left',   summary: 'none'  },
-        { field: 'quantidade', label: 'Volume (L)',     format: 'number',   align: 'right',  summary: 'sum'   },
-        { field: 'total',      label: 'Total (R$)',     format: 'currency', align: 'right',  summary: 'sum'   },
-        { field: 'margem',     label: 'Margem %',      format: 'percent',  align: 'right',  summary: 'avg'   },
-        { field: 'data',       label: 'Última Venda',  format: 'date',     align: 'center', summary: 'none'  },
-      ],
-      show_totals: true,
-      show_index:  true,
-    },
-    created_at: '2026-05-20T11:00:00Z',
-  },
-  {
-    id: 'tmpl-006', nome: 'KPI — Indicadores do Dia', descricao: '4 métricas-chave em tempo real: litros, faturamento, margem e abastecimentos',
-    categoria: 'vendas', chart_type: 'kpi', is_publico: true,
-    query: { sql: 'SELECT litros, faturamento, margem, abastecimentos, delta_litros, delta_fat, delta_margem, delta_abast FROM resumo_dia WHERE empresa_id IN (:empresas_filtradas)', refresh_seconds: 60, timeout_seconds: 15 },
-    axes: { x: { field: 'label', label: 'Métrica' }, y: [] },
-    display: { height: 'sm', show_legend: false, show_tooltip: false },
-    permissions: { min_role: 'operador' },
-    kpi_config: {
-      layout: '4',
-      metrics: [
-        { field: 'litros',         label: 'Litros Vendidos',  format: 'number',   delta_field: 'delta_litros',  delta_label: 'vs ontem', icon: 'Fuel',         color: '#009c3b', sparkline: true  },
-        { field: 'faturamento',    label: 'Faturamento',      format: 'currency', delta_field: 'delta_fat',     delta_label: 'vs ontem', icon: 'DollarSign',   color: '#3b82f6', sparkline: true  },
-        { field: 'margem',         label: 'Margem Média',     format: 'percent',  delta_field: 'delta_margem',  delta_label: 'vs ontem', icon: 'TrendingUp',   color: '#f59e0b', sparkline: false },
-        { field: 'abastecimentos', label: 'Abastecimentos',   format: 'number',   delta_field: 'delta_abast',   delta_label: 'vs ontem', icon: 'ShoppingCart', color: '#8b5cf6', sparkline: false },
-      ],
-    },
-    created_at: '2026-05-21T08:00:00Z',
-  },
-  {
-    id: 'tmpl-007', nome: 'Heatmap — Movimento por Hora/Dia', descricao: 'Intensidade de vendas por hora do dia × dia da semana — identifica picos e vales',
-    categoria: 'operacional', chart_type: 'heatmap', is_publico: false,
-    query: { sql: 'SELECT EXTRACT(hour FROM created_at)/3*3 AS hora, EXTRACT(dow FROM created_at) AS dia_semana, SUM(litros) AS litros FROM vendas WHERE empresa_id IN (:empresas_filtradas) GROUP BY hora, dia_semana', refresh_seconds: 3600, timeout_seconds: 60 },
-    axes: { x: { field: 'hora', label: 'Horário' }, y: [{ field: 'dia_semana', label: 'Dia' }, { field: 'litros', label: 'Volume (L)' }] },
-    display: { height: 'lg', show_legend: false, show_tooltip: true },
-    permissions: { min_role: 'gerente' },
-    created_at: '2026-05-21T10:00:00Z',
-  },
-  {
-    id: 'tmpl-008', nome: 'Waterfall — Demonstrativo de Resultado', descricao: 'Composição do resultado do período: faturamento → custos → impostos → margem líquida',
-    categoria: 'financeiro', chart_type: 'waterfall', is_publico: false,
-    query: { sql: "SELECT componente, valor FROM resultado_periodo WHERE empresa_id IN (:empresas_filtradas) ORDER BY ordem", refresh_seconds: 86400, timeout_seconds: 60 },
-    axes: { x: { field: 'componente', label: 'Componente' }, y: [{ field: 'valor', label: 'Valor (R$)', color: '#009c3b' }] },
-    display: { height: 'lg', show_legend: true, show_tooltip: true },
-    permissions: { min_role: 'dono' },
-    created_at: '2026-05-21T12:00:00Z',
-  },
-  {
-    id: 'tmpl-009', nome: 'Botões — Ações Rápidas do Operador', descricao: 'Atalhos de tela: estoque, troca de preço e autorizações de desconto',
-    categoria: 'operacional', chart_type: 'button', is_publico: true,
-    query: { sql: '', refresh_seconds: 0, timeout_seconds: 0 },
-    axes: { x: { field: '', label: '' }, y: [] },
-    display: { height: 'sm', show_legend: false, show_tooltip: false },
-    permissions: { min_role: 'operador' },
-    button_config: {
-      layout: 'horizontal',
-      buttons: [
-        { icon: 'Fuel',          label: 'Estoque de Tanques', variant: 'primary',   size: 'md', action: { type: 'navigate', route: '/estoque'      } },
-        { icon: 'DollarSign',    label: 'Trocar Preço',       variant: 'secondary', size: 'md', action: { type: 'navigate', route: '/troca-preco'  } },
-        { icon: 'AlertTriangle', label: 'Autorizações',       variant: 'danger',    size: 'md', action: { type: 'navigate', route: '/autorizacoes' } },
-      ],
-    },
-    created_at: '2026-05-21T14:00:00Z',
-  },
-]
 
 export default function GraficosPage() {
+  const router = useRouter()
+  const { toasts, toast, dismiss } = useToast()
   const [liberacoes, setLiberacoes] = useState<Record<string, LiberacaoState>>(() =>
-    Object.fromEntries(MOCK_TEMPLATES.map(t => [t.id, { is_publico: t.is_publico, cliente_ids: [] }]))
+    Object.fromEntries(SYSTEM_TEMPLATES.map(t => [t.id, { is_publico: false, cliente_ids: [] }]))
   )
   const [modalItem, setModalItem] = useState<ChartMetadata | null>(null)
+  const [customGraficos, setCustomGraficos] = useState<ChartMetadata[]>([])
+  const [duplicando, setDuplicando] = useState<string | null>(null)
+  const [deletando, setDeletando]   = useState<string | null>(null)
+  const [busca,     setBusca]       = useState('')
+
+  const allGraficos = [...SYSTEM_TEMPLATES, ...customGraficos]
+
+  const templatesFiltrados = busca.trim()
+    ? allGraficos.filter(t =>
+        t.nome.toLowerCase().includes(busca.toLowerCase()) ||
+        t.categoria.toLowerCase().includes(busca.toLowerCase()) ||
+        t.chart_type.toLowerCase().includes(busca.toLowerCase()) ||
+        (t.descricao ?? '').toLowerCase().includes(busca.toLowerCase())
+      )
+    : allGraficos
+
+  async function duplicar(tmpl: ChartMetadata) {
+    setDuplicando(tmpl.id)
+    try {
+      const res  = await fetch(`/api/graficos/${tmpl.id}`)
+      const data = await res.json() as { template?: ChartMetadata }
+      if (!data.template) { toast('Template não encontrado', 'error'); return }
+      router.push(`/graficos/novo?from=${tmpl.id}`)
+    } catch {
+      toast('Erro ao duplicar template', 'error')
+    } finally {
+      setDuplicando(null)
+    }
+  }
+
+  // Carrega estado de liberação do banco ao montar
+  useEffect(() => {
+    // Liberações de templates do sistema
+    fetch('/api/graficos/liberacoes')
+      .then(r => r.json())
+      .then((data: { liberacoes: Record<string, { is_publico: boolean; cliente_ids: string[] }> }) => {
+        if (data.liberacoes) {
+          setLiberacoes(prev => {
+            const next = { ...prev }
+            for (const [key, val] of Object.entries(data.liberacoes)) {
+              next[key] = { is_publico: val.is_publico, cliente_ids: val.cliente_ids }
+            }
+            return next
+          })
+        }
+      })
+      .catch(() => {})
+
+    // Graficos customizados criados pelo admin (armazenados no DB)
+    fetch('/api/graficos')
+      .then(r => r.json())
+      .then((data: { graficos: ChartMetadata[] }) => {
+        const list = data.graficos ?? []
+        setCustomGraficos(list)
+        // Inicializa liberações a partir dos próprios dados do DB
+        setLiberacoes(prev => ({
+          ...prev,
+          ...Object.fromEntries(
+            list.map(g => [g.id, { is_publico: g.is_publico, cliente_ids: g.cliente_ids ?? [] }])
+          ),
+        }))
+      })
+      .catch(() => {})
+  }, [])
+
+  async function deletar(tmpl: ChartMetadata) {
+    if (tmpl.id.startsWith('tmpl-')) {
+      toast('Templates do sistema não podem ser excluídos', 'warning'); return
+    }
+    if (!confirm(`Excluir template "${tmpl.nome}"? Esta ação não pode ser desfeita.`)) return
+    setDeletando(tmpl.id)
+    try {
+      const res = await fetch(`/api/graficos/${tmpl.id}`, { method: 'DELETE' })
+      if (!res.ok) { const d = await res.json(); toast(d.error ?? 'Erro ao excluir', 'error'); return }
+      toast('Template excluído', 'success')
+      setCustomGraficos(prev => prev.filter(g => g.id !== tmpl.id))
+      setLiberacoes(prev => { const next = { ...prev }; delete next[tmpl.id]; return next })
+    } catch {
+      toast('Erro de conexão', 'error')
+    } finally {
+      setDeletando(null)
+    }
+  }
 
   function salvarLiberacao(id: string, nova: LiberacaoState) {
     setLiberacoes(prev => ({ ...prev, [id]: nova }))
@@ -174,7 +158,7 @@ export default function GraficosPage() {
     <div>
       <TopBar
         title="Templates de Gráficos"
-        subtitle={`${MOCK_TEMPLATES.length} templates`}
+        subtitle={`${allGraficos.length} template(s)`}
         actions={
           <Link href="/graficos/novo">
             <Button size="sm"><Plus size={14} />Novo Template</Button>
@@ -183,8 +167,18 @@ export default function GraficosPage() {
       />
 
       <div className="p-8">
+        {/* Busca */}
+        <div className="relative mb-5 max-w-sm">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
+          <input
+            value={busca} onChange={e => setBusca(e.target.value)}
+            placeholder="Buscar por nome, tipo, categoria..."
+            className="w-full bg-white/5 border border-white/10 rounded-xl pl-9 pr-4 py-2.5 text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-white/25 transition-all"
+          />
+        </div>
+
         <div className="grid grid-cols-2 gap-5">
-          {MOCK_TEMPLATES.map(tmpl => {
+          {templatesFiltrados.map(tmpl => {
             const Icon    = ICON_MAP[tmpl.chart_type] ?? BarChart3
             const tStyle  = TYPE_STYLE[tmpl.chart_type]
             const tLabel  = TYPE_LABEL[tmpl.chart_type]
@@ -229,12 +223,17 @@ export default function GraficosPage() {
                       </div>
 
                       <div className="flex items-center gap-2">
-                        <Link href={`/graficos/${tmpl.id}`}>
-                          <Button variant="secondary" size="sm">
-                            <Edit2 size={12} />Editar
-                          </Button>
-                        </Link>
-                        <Button variant="secondary" size="sm">
+                        <Button
+                          variant="secondary" size="sm"
+                          onClick={() => router.push(`/graficos/novo?edit=${tmpl.id}`)}
+                        >
+                          <Edit2 size={12} />Editar
+                        </Button>
+                        <Button
+                          variant="secondary" size="sm"
+                          loading={duplicando === tmpl.id}
+                          onClick={() => duplicar(tmpl)}
+                        >
                           <Copy size={12} />Duplicar
                         </Button>
                         <Button
@@ -255,7 +254,13 @@ export default function GraficosPage() {
                             : <><Lock size={12} />Liberar</>
                           }
                         </Button>
-                        <Button variant="danger" size="sm">
+                        <Button
+                          variant="danger" size="sm"
+                          loading={deletando === tmpl.id}
+                          disabled={tmpl.id.startsWith('tmpl-')}
+                          onClick={() => deletar(tmpl)}
+                          title={tmpl.id.startsWith('tmpl-') ? 'Templates do sistema não podem ser excluídos' : 'Excluir template'}
+                        >
                           <Trash2 size={12} />
                         </Button>
                       </div>
@@ -268,12 +273,16 @@ export default function GraficosPage() {
         </div>
       </div>
 
+      {/* Toast */}
+      <Toaster toasts={toasts} onDismiss={dismiss} />
+
       {/* Modal de liberação */}
       {modalItem && (
         <LiberarModal
           itemNome={modalItem.nome}
           itemTipo="template"
           liberacao={liberacoes[modalItem.id] ?? { is_publico: false, cliente_ids: [] }}
+          apiUrl={`/api/graficos/liberacao/${modalItem.id}`}
           onSalvar={nova => salvarLiberacao(modalItem.id, nova)}
           onFechar={() => setModalItem(null)}
         />

@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
     }
 
     const cnpj = body.cnpj.replace(/\D/g, '')
-    const subs = getSubscriptions(cnpj)
+    const subs = await getSubscriptions(cnpj)
 
     if (subs.length === 0) {
       return NextResponse.json({ ok: true, sent: 0, message: 'Nenhum dispositivo registrado' })
@@ -72,14 +72,14 @@ export async function POST(req: NextRequest) {
         if (result.value.ok) {
           sent++
         } else {
-          // Subscription inválida/expirada — remove da lista
-          removeSubscription(cnpj, result.value.sub.endpoint)
+          await removeSubscription(cnpj, result.value.sub.endpoint)
         }
       }
     }
 
     return NextResponse.json({ ok: true, sent, total: subs.length })
-  } catch {
+  } catch (err) {
+    console.error('[push/send]', err)
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 })
   }
 }

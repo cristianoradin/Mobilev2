@@ -18,15 +18,16 @@ import (
 
 // AgentClient gerencia a conexão MQTT e o despacho de comandos
 type AgentClient struct {
-	client       pahomqtt.Client
-	cfg          config.MQTTConfig
-	cnpj         string
-	cnpjClean    string // CNPJ sem pontuação para tópicos
-	readHandler  *commands.ReadHandler
-	writeHandler *commands.WriteHandler
-	cache        *database.CacheDB
-	log          *zap.Logger
-	done         chan struct{}
+	client        pahomqtt.Client
+	cfg           config.MQTTConfig
+	cnpj          string
+	cnpjClean     string // CNPJ sem pontuação para tópicos
+	readHandler   *commands.ReadHandler
+	writeHandler  *commands.WriteHandler
+	updateHandler *commands.UpdateHandler
+	cache         *database.CacheDB
+	log           *zap.Logger
+	done          chan struct{}
 }
 
 // NewAgentClient cria e configura o cliente MQTT
@@ -35,19 +36,21 @@ func NewAgentClient(
 	cnpj string,
 	readH *commands.ReadHandler,
 	writeH *commands.WriteHandler,
+	updateH *commands.UpdateHandler,
 	cache *database.CacheDB,
 	log *zap.Logger,
 ) *AgentClient {
 	clean := strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(cnpj, ".", ""), "/", ""), "-", "")
 	return &AgentClient{
-		cfg:          cfg,
-		cnpj:         cnpj,
-		cnpjClean:    clean,
-		readHandler:  readH,
-		writeHandler: writeH,
-		cache:        cache,
-		log:          log,
-		done:         make(chan struct{}),
+		cfg:           cfg,
+		cnpj:          cnpj,
+		cnpjClean:     clean,
+		readHandler:   readH,
+		writeHandler:  writeH,
+		updateHandler: updateH,
+		cache:         cache,
+		log:           log,
+		done:          make(chan struct{}),
 	}
 }
 
@@ -141,6 +144,11 @@ func (a *AgentClient) handleMessage(_ pahomqtt.Client, msg pahomqtt.Message) {
 			response, err = a.writeHandler.Handle(&cmd)
 		case models.CmdSyncTemplate:
 			response, err = a.handleSyncTemplate(&cmd)
+		case models.CmdUpdateAgent:
+			// Roda em goroutine própria — bloqueia durante download + restart
+			// e não precisa enviar resposta MQTT
+			go a.updateHandler.Handle(&cmd)
+			return
 		default:
 			a.log.Warn("tipo de comando desconhecido", zap.String("type", string(cmd.Type)))
 			return

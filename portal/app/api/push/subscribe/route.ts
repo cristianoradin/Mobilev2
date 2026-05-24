@@ -1,6 +1,6 @@
 /**
  * POST /api/push/subscribe
- * Recebe a PushSubscription do PWA e armazena para envios futuros.
+ * Recebe a PushSubscription do PWA e armazena no banco de dados.
  *
  * Body: { subscription: PushSubscription, cnpj: string }
  */
@@ -25,10 +25,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'CNPJ inválido' }, { status: 400 })
     }
 
-    addSubscription(cnpj, body.subscription)
+    await addSubscription(cnpj, body.subscription)
 
     return NextResponse.json({ ok: true }, { status: 201 })
-  } catch {
+  } catch (err) {
+    console.error('[push/subscribe]', err)
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 })
   }
 }

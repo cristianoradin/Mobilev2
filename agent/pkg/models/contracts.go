@@ -26,9 +26,10 @@ const (
 type CommandType string
 
 const (
-	CmdReadQuery   CommandType = "READ_QUERY"
-	CmdWriteCmd    CommandType = "WRITE_COMMAND"
+	CmdReadQuery    CommandType = "READ_QUERY"
+	CmdWriteCmd     CommandType = "WRITE_COMMAND"
 	CmdSyncTemplate CommandType = "SYNC_TEMPLATE"
+	CmdUpdateAgent  CommandType = "UPDATE_AGENT"
 )
 
 // WriteSubtype subtipos de comandos de escrita

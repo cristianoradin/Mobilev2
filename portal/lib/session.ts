@@ -6,9 +6,12 @@ const secret = new TextEncoder().encode(
 )
 
 export interface AdminSession {
-  email: string
-  nome:  string
-  role:  'admin'
+  id?:                string
+  email:              string
+  nome:               string
+  role:               'admin'
+  is_master:          boolean
+  menus_permitidos:   string[]
 }
 
 export async function createSessionToken(session: AdminSession): Promise<string> {
@@ -25,9 +28,12 @@ export async function verifySessionToken(token: string): Promise<AdminSession | 
   try {
     const { payload } = await jwtVerify(token, secret, { issuer: 'sgapetro.cloud' })
     return {
-      email: payload.email as string,
-      nome:  payload.nome  as string,
-      role:  'admin',
+      id:               payload.id    as string | undefined,
+      email:            payload.email as string,
+      nome:             payload.nome  as string,
+      role:             'admin',
+      is_master:        (payload.is_master as boolean) ?? false,
+      menus_permitidos: (payload.menus_permitidos as string[]) ?? [],
     }
   } catch {
     return null

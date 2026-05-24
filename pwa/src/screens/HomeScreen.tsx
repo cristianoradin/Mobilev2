@@ -1,28 +1,126 @@
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { TrendingUp, Fuel, DollarSign, Shield, Settings, ChevronRight } from 'lucide-react'
+import { TrendingUp, Fuel, DollarSign, Shield, Settings, ChevronRight,
+  BarChart3, PanelsTopLeft, X, Megaphone } from 'lucide-react'
 import { useAuth } from '@/core/auth/AuthContext'
 import { useMQTT } from '@/core/mqtt/MQTTContext'
 import { Badge }   from '@/components/ui/Badge'
 
+// ─── Tipos ────────────────────────────────────────────────────────────────────
+interface PropagandaData {
+  id:            string
+  titulo:        string
+  descricao:     string
+  imagem:        string | null
+  expires_at:    string | null
+  duracao_horas: number
+}
+
+const API_URL = import.meta.env.VITE_API_URL ?? 'https://mobilev2.gruposgapetro.com.br:4443'
+const DISMISSED_KEY = 'sga_propaganda_dismissed'
+
+// ─── Banner de propaganda ─────────────────────────────────────────────────────
+function PropagandaBanner({ session }: { session: { jwt: string } | null }) {
+  const [prop,     setProp]     = useState<PropagandaData | null>(null)
+  const [visible,  setVisible]  = useState(false)
+  const [imgError, setImgError] = useState(false)
+
+  useEffect(() => {
+    if (!session?.jwt) return
+    fetch(`${API_URL}/api/mobile/propaganda`, {
+      headers: { Authorization: `Bearer ${session.jwt}` },
+    })
+      .then(r => r.json())
+      .then((d: { propaganda?: PropagandaData | null }) => {
+        const p = d.propaganda
+        if (!p) return
+
+        // Verifica se foi dispensada
+        const dismissed: string[] = JSON.parse(localStorage.getItem(DISMISSED_KEY) ?? '[]')
+        if (dismissed.includes(p.id)) return
+
+        setProp(p)
+        setVisible(true)
+      })
+      .catch(() => {})
+  }, [session?.jwt])
+
+  function dismiss() {
+    setVisible(false)
+    if (!prop) return
+    const dismissed: string[] = JSON.parse(localStorage.getItem(DISMISSED_KEY) ?? '[]')
+    dismissed.push(prop.id)
+    // Mantém só os últimos 20 IDs
+    localStorage.setItem(DISMISSED_KEY, JSON.stringify(dismissed.slice(-20)))
+  }
+
+  if (!visible || !prop) return null
+
+  return (
+    <div className="relative overflow-hidden rounded-2xl border border-primary/25 bg-surface shadow-lg shadow-primary/5 animate-fade-in">
+      {/* Imagem */}
+      {prop.imagem && !imgError && (
+        <div className="relative w-full h-40 overflow-hidden">
+          <img
+            src={prop.imagem}
+            alt={prop.titulo}
+            className="w-full h-full object-cover"
+            onError={() => setImgError(true)}
+          />
+          {/* Gradiente de leitura */}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+        </div>
+      )}
+
+      {/* Conteúdo */}
+      <div className="px-4 py-3">
+        <div className="flex items-start gap-2">
+          <div className="w-6 h-6 rounded-lg bg-primary/15 flex items-center justify-center flex-shrink-0 mt-0.5">
+            <Megaphone size={12} className="text-primary" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-ink font-bold text-sm leading-tight">{prop.titulo}</p>
+            {prop.descricao && (
+              <p className="text-ink/55 text-xs mt-1 leading-relaxed line-clamp-3">{prop.descricao}</p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Botão fechar */}
+      <button
+        onClick={dismiss}
+        className="absolute top-2 right-2 w-7 h-7 bg-black/50 hover:bg-black/70 rounded-full flex items-center justify-center transition-all active:scale-90"
+      >
+        <X size={13} className="text-white/80" />
+      </button>
+    </div>
+  )
+}
+
 const menuItems = [
-  { icon: TrendingUp, label: 'Vendas',         sub: 'Relatório do dia',      color: '#009c3b', bg: '#009c3b20', route: '/vendas',  badge: null },
-  { icon: Fuel,       label: 'Estoque',        sub: 'Nível dos tanques',     color: '#3b82f6', bg: '#3b82f620', route: '/estoque', badge: null },
-  { icon: DollarSign, label: 'Troca de Preço', sub: 'Atualizar valores',     color: '#f97316', bg: '#f9731620', route: '/preco',   badge: null },
-  { icon: Shield,     label: 'Autorizações',   sub: 'Descontos pendentes',   color: '#fbbf24', bg: '#fbbf2420', route: '/auth',    badge: '2'  },
-  { icon: Settings,   label: 'Configurações',  sub: 'Conta e preferências',  color: '#6366f1', bg: '#6366f120', route: '/config',  badge: null },
+  { icon: TrendingUp,     label: 'Vendas',         sub: 'Relatório do dia',           color: '#009c3b', bg: '#009c3b20', route: '/vendas',      badge: null },
+  { icon: Fuel,           label: 'Estoque',        sub: 'Nível dos tanques',          color: '#3b82f6', bg: '#3b82f620', route: '/estoque',     badge: null },
+  { icon: DollarSign,     label: 'Troca de Preço', sub: 'Atualizar valores',          color: '#f97316', bg: '#f9731620', route: '/preco',       badge: null },
+  { icon: Shield,         label: 'Autorizações',   sub: 'Descontos pendentes',        color: '#fbbf24', bg: '#fbbf2420', route: '/auth',        badge: '2'  },
+  { icon: BarChart3,      label: 'Gráficos',       sub: 'Templates disponíveis',      color: '#6366f1', bg: '#6366f120', route: '/graficos',    badge: null },
+  { icon: PanelsTopLeft,  label: 'Dashboards',     sub: 'Painéis liberados',          color: '#ec4899', bg: '#ec489920', route: '/dashboards',  badge: null },
+  { icon: Settings,       label: 'Configurações',  sub: 'Conta e preferências',       color: '#64748b', bg: '#64748b20', route: '/config',      badge: null },
 ]
 
 export function HomeScreen() {
-  const { session }  = useAuth()
+  const { session }   = useAuth()
   const { connected } = useMQTT()
-  const navigate     = useNavigate()
+  const navigate      = useNavigate()
 
-  const hora        = new Date().getHours()
-  const saudacao    = hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite'
+  const hora         = new Date().getHours()
+  const saudacao     = hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite'
   const primeiroNome = session?.nome.split(' ')[0] ?? 'Gestor'
 
   return (
     <div className="pt-4 space-y-6">
+      {/* Banner de propaganda (exibido quando ativo) */}
+      <PropagandaBanner session={session} />
       {/* Saudação */}
       <div>
         <p className="text-ink/50 text-sm">{saudacao},</p>

@@ -20,7 +20,12 @@ import (
 	"github.com/sga-petro/agent/internal/httpserver"
 	"github.com/sga-petro/agent/internal/mqtt"
 	"github.com/sga-petro/agent/internal/query"
+	"github.com/sga-petro/agent/internal/setup"
 )
+
+// svcRef é um singleton para que o UpdateHandler possa reiniciar o serviço
+// sem acoplar ao program struct diretamente.
+var svcRef service.Service
 
 // exeDir retorna o diretório onde o executável está — funciona em Windows Service
 // (onde o working directory pode ser System32 ou outro caminho inesperado)
@@ -94,8 +99,30 @@ func (p *program) Start(s service.Service) error {
 
 	// 4. Monta os handlers de comando
 	executor := query.NewExecutor(pg, cache, agentClaims.CNPJ)
-	readHandler := commands.NewReadHandler(executor, cache, validator, p.log)
+	readHandler  := commands.NewReadHandler(executor, cache, validator, p.log)
 	writeHandler := commands.NewWriteHandler(pg, cache, validator, agentClaims.CNPJ, p.log)
+
+	// UpdateHandler: após substituir o binário, reinicia o serviço Windows/Systemd.
+	// O serviço está configurado com OnFailure=restart, então os.Exit(1) é suficiente.
+	updateHandler := commands.NewUpdateHandler(
+		p.cfg.Portal.PushSecret,
+		version,
+		func() {
+			p.log.Info("UPDATE_AGENT: acionando restart do serviço...")
+			_ = p.log.Sync()
+			if svcRef != nil {
+				// Tenta restart via service manager (mais limpo)
+				if err := service.Control(svcRef, "restart"); err != nil {
+					// Fallback: encerra o processo — o Windows Service Manager reinicia
+					p.log.Warn("restart via service manager falhou, usando os.Exit(1)", zap.Error(err))
+					os.Exit(1)
+				}
+			} else {
+				os.Exit(1)
+			}
+		},
+		p.log,
+	)
 
 	// 5. Conecta ao MQTT e começa a escutar comandos
 	agentClient := mqtt.NewAgentClient(
@@ -103,6 +130,7 @@ func (p *program) Start(s service.Service) error {
 		agentClaims.CNPJ,
 		readHandler,
 		writeHandler,
+		updateHandler,
 		cache,
 		p.log,
 	)
@@ -200,6 +228,13 @@ func main() {
 		Name:        "SGAPetroAgent",
 		DisplayName: "SGA Petro — Agente Local",
 		Description: "Serviço de integração analytics para postos de combustível SGA Petro v" + version,
+		// Windows: reinicia automaticamente após 2 s em qualquer saída não-zero.
+		// Isso garante que o serviço suba novamente após um self-update (os.Exit(1)).
+		Option: service.KeyValue{
+			"OnFailure":              "restart",
+			"OnFailureDelayDuration": "2s",
+			"OnFailureResetPeriod":   60,
+		},
 	}
 
 	prg := &program{cfg: cfg, log: logger}
@@ -207,8 +242,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("criando serviço: %v", err)
 	}
+	svcRef = s // expõe para o UpdateHandler reiniciar via service manager
 
-	// Suporte a comandos de gerenciamento: install, uninstall, start, stop
+	// Suporte a comandos de gerenciamento: install, uninstall, start, stop, setup
 	if len(os.Args) > 1 {
 		cmd := os.Args[1]
 		switch cmd {
@@ -217,6 +253,28 @@ func main() {
 				log.Fatalf("controlando serviço (%s): %v", cmd, err)
 			}
 			fmt.Printf("Serviço %s executado com sucesso.\n", cmd)
+			return
+
+		case "setup":
+			// Instalação assistida: sga-agent.exe setup <TOKEN>
+			// ou: sga-agent.exe setup --token <TOKEN>
+			token := ""
+			args := os.Args[2:]
+			for i, a := range args {
+				if a == "--token" || a == "-token" {
+					if i+1 < len(args) {
+						token = args[i+1]
+					}
+				} else if !strings.HasPrefix(a, "-") {
+					token = a
+				}
+			}
+			if token == "" {
+				fmt.Fprintln(os.Stderr, "Uso: sga-agent.exe setup <TOKEN>")
+				fmt.Fprintln(os.Stderr, "O token é gerado no portal em Clientes → Instalador.")
+				os.Exit(1)
+			}
+			setup.Run(token)
 			return
 		}
 	}

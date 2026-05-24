@@ -1,11 +1,24 @@
 /// <reference lib="webworker" />
 import { cleanupOutdatedCaches, precacheAndRoute } from 'workbox-precaching'
+import { clientsClaim } from 'workbox-core'
 
 declare const self: ServiceWorkerGlobalScope
+
+// ── Ativa imediatamente sem esperar tabs fecharem ──────────────────────────
+// Essencial para PWA salvo na tela inicial: garante que updates chegam rápido
+self.skipWaiting()
+clientsClaim()
 
 // ── Workbox precaching ─────────────────────────────────────────────────────
 cleanupOutdatedCaches()
 precacheAndRoute(self.__WB_MANIFEST)
+
+// ── Responde mensagem de skip waiting (enviada pelo registerSW) ────────────
+self.addEventListener('message', (event: ExtendableMessageEvent) => {
+  if (event.data?.type === 'SKIP_WAITING') {
+    self.skipWaiting()
+  }
+})
 
 // ── Push event: recebe notificação do servidor (Web Push) ──────────────────
 self.addEventListener('push', (event: PushEvent) => {

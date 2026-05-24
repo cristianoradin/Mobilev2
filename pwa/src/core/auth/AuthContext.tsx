@@ -29,6 +29,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<UserSession | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
+  // Carrega sessão persistida do IndexedDB
   useEffect(() => {
     getDB()
       .then(db => db.get(DB_STORE, 'current'))
@@ -38,6 +39,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       })
       .finally(() => setIsLoading(false))
+  }, [])
+
+  // Escuta AUTO_LOGIN vindo do portal (iframe postMessage)
+  useEffect(() => {
+    function onMessage(ev: MessageEvent) {
+      if (ev.data?.type !== 'AUTO_LOGIN') return
+      const s = ev.data?.session as UserSession | undefined
+      if (!s?.jwt) return
+      getDB()
+        .then(db => db.put(DB_STORE, s, 'current'))
+        .then(() => setSession(s))
+        .catch(console.error)
+    }
+    window.addEventListener('message', onMessage)
+    return () => window.removeEventListener('message', onMessage)
   }, [])
 
   async function login(s: UserSession) {

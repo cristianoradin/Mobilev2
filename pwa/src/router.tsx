@@ -8,8 +8,13 @@ import { VendasScreen } from '@/screens/VendasScreen'
 import { EstoqueScreen } from '@/screens/EstoqueScreen'
 import { TrocaPrecoScreen } from '@/screens/TrocaPrecoScreen'
 import { AutorizacoesScreen } from '@/screens/AutorizacoesScreen'
-import { ConfigScreen }   from '@/screens/ConfigScreen'
-import { UsuariosScreen } from '@/screens/UsuariosScreen'
+import { ConfigScreen }        from '@/screens/ConfigScreen'
+import { UsuariosScreen }      from '@/screens/UsuariosScreen'
+import { GraficosScreen }       from '@/screens/GraficosScreen'
+import { GraficoDetailScreen }  from '@/screens/GraficoDetailScreen'
+import { DashboardsScreen }     from '@/screens/DashboardsScreen'
+import { NotificacoesScreen }  from '@/screens/NotificacoesScreen'
+import { AparenciaScreen }     from '@/screens/AparenciaScreen'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { session, isLoading } = useAuth()
@@ -44,8 +49,13 @@ const router = createBrowserRouter([
       { path: 'estoque',    element: <EstoqueScreen />      },
       { path: 'preco',      element: <TrocaPrecoScreen />   },
       { path: 'auth',       element: <AutorizacoesScreen /> },
-      { path: 'config',          element: <ConfigScreen />   },
-      { path: 'config/usuarios', element: <UsuariosScreen /> },
+      { path: 'config',                  element: <ConfigScreen />         },
+      { path: 'config/usuarios',        element: <UsuariosScreen />        },
+      { path: 'config/notificacoes',    element: <NotificacoesScreen />    },
+      { path: 'config/aparencia',       element: <AparenciaScreen />        },
+      { path: 'graficos',          element: <GraficosScreen />       },
+      { path: 'graficos/:id',    element: <GraficoDetailScreen /> },
+      { path: 'dashboards',      element: <DashboardsScreen />     },
     ],
   },
   { path: '*', element: <Navigate to="/" replace /> },

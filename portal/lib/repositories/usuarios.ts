@@ -118,6 +118,28 @@ export async function createUsuario(input: CreateUsuarioInput): Promise<Usuario>
   return usuario as unknown as Usuario
 }
 
+export async function findDonoByClienteId(clienteId: string): Promise<Usuario | null> {
+  const sql = getDb()
+  const rows = await sql`
+    SELECT
+      u.id, u.cliente_id, u.email, u.nome, u.telefone, u.role,
+      u.ativo, u.ultimo_login, u.created_at,
+      COALESCE(
+        ARRAY_REMOVE(ARRAY_AGG(ue.empresa_id ORDER BY ue.empresa_id), NULL),
+        '{}'::bigint[]
+      ) AS empresa_ids
+    FROM   usuarios u
+    LEFT JOIN usuario_empresas ue ON ue.usuario_id = u.id
+    WHERE  u.cliente_id = ${clienteId}
+    AND    u.role = 'dono'
+    AND    u.ativo = true
+    GROUP  BY u.id
+    ORDER  BY u.created_at ASC
+    LIMIT  1
+  `
+  return (rows[0] as unknown as Usuario) ?? null
+}
+
 export async function updateUltimoLogin(userId: string): Promise<void> {
   const sql = getDb()
   await sql`UPDATE usuarios SET ultimo_login = NOW() WHERE id = ${userId}`

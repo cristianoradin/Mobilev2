@@ -7,9 +7,13 @@ import { Badge }   from '@/components/ui/Badge'
 import { Button }  from '@/components/ui/Button'
 import { Input }   from '@/components/ui/Input'
 import { type Cliente, type Plano, type UserRole } from '@/lib/types'
+import { SYSTEM_TEMPLATES } from '@/lib/templates'
 import {
   Plus, Building2, Mail, Phone, ChevronRight,
   Key, BarChart3, X, Loader2, Users, Trash2, UserPlus,
+  LayoutDashboard, LineChart, PieChart, Gauge, TrendingUp, TableProperties,
+  Flame, Layers, MousePointerClick, PanelsTopLeft,
+  Terminal, Copy, Check, Search,
 } from 'lucide-react'
 
 // ── Tipo local de usuário ─────────────────────────────────────────────────────
@@ -57,16 +61,39 @@ const FORM_VAZIO: FormState = {
 // ── componente ────────────────────────────────────────────────────────────────
 export default function ClientesPage() {
   const [clientes,    setClientes]    = useState<Cliente[]>([])
+  const [busca,       setBusca]       = useState('')
   const [carregando,  setCarregando]  = useState(true)
 
-  const [selecionado,  setSelecionado]  = useState<Cliente | null>(null)
-  const [gerandoToken, setGerandoToken] = useState(false)
-  const [token,        setToken]        = useState<string | null>(null)
+  const [selecionado,       setSelecionado]       = useState<Cliente | null>(null)
+  const [gerandoInstalador, setGerandoInstalador] = useState(false)
+  const [setupCommand,      setSetupCommand]      = useState<string | null>(null)
+  const [copiado,           setCopiado]           = useState(false)
 
   const [modalAberto,  setModalAberto]  = useState(false)
   const [form,         setForm]         = useState<FormState>(FORM_VAZIO)
   const [salvando,     setSalvando]     = useState(false)
   const [erroForm,     setErroForm]     = useState<string | null>(null)
+
+  // ── Modal Gráficos/Dashboards ────────────────────────────────────────────
+  const [modalAcesso,    setModalAcesso]    = useState(false)
+  const [abaAcesso,      setAbaAcesso]      = useState<'graficos' | 'dashboards'>('graficos')
+  const [libTemplates,   setLibTemplates]   = useState<Record<string, { is_publico: boolean; cliente_ids: string[] }>>({})
+  const [todosDashboards, setTodosDashboards] = useState<Array<{ id: string; nome: string; descricao?: string; cor?: string; isPublico?: boolean; clienteIds?: string[] }>>([])
+  const [carregandoLib,  setCarregandoLib]  = useState(false)
+
+  async function abrirModalAcesso() {
+    setModalAcesso(true)
+    setCarregandoLib(true)
+    try {
+      const [rT, rD] = await Promise.all([
+        fetch('/api/graficos/liberacoes').then(r => r.json()),
+        fetch('/api/dashboards').then(r => r.json()),
+      ])
+      setLibTemplates(rT.liberacoes ?? {})
+      setTodosDashboards(rD.dashboards ?? [])
+    } catch { /* silencioso */ }
+    finally { setCarregandoLib(false) }
+  }
 
   // ── Usuários ────────────────────────────────────────────────────────────
   const [usuarios,          setUsuarios]          = useState<Usuario[]>([])
@@ -109,7 +136,8 @@ export default function ClientesPage() {
 
   function selecionarCliente(cliente: Cliente) {
     setSelecionado(cliente)
-    setToken(null)
+    setSetupCommand(null)
+    setCopiado(false)
     setUsuarios([])
     carregarUsuarios(cliente.id)
   }
@@ -166,23 +194,33 @@ export default function ClientesPage() {
 
   useEffect(() => { carregarClientes() }, [carregarClientes])
 
-  // ── gera token do agente ──────────────────────────────────────────────────
-  async function gerarToken(cliente: Cliente) {
-    setGerandoToken(true)
-    setToken(null)
+  // ── gera comando de instalação do agente ─────────────────────────────────
+  async function gerarInstalador(cliente: Cliente) {
+    setGerandoInstalador(true)
+    setSetupCommand(null)
+    setCopiado(false)
     try {
       const res  = await fetch('/api/agent/token', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ cliente_id: cliente.id }),
       })
-      const data = await res.json() as { token: string }
-      setToken(data.token)
+      const data = await res.json() as { command?: string; error?: string }
+      if (!res.ok) { setSetupCommand(`ERRO: ${data.error ?? 'Falha ao gerar'}`) }
+      else         { setSetupCommand(data.command ?? '') }
     } catch {
-      setToken('ERRO ao gerar token')
+      setSetupCommand('ERRO: falha na comunicação com o servidor')
     } finally {
-      setGerandoToken(false)
+      setGerandoInstalador(false)
     }
+  }
+
+  function copiarComando() {
+    if (!setupCommand) return
+    navigator.clipboard.writeText(setupCommand).then(() => {
+      setCopiado(true)
+      setTimeout(() => setCopiado(false), 2500)
+    })
   }
 
   // ── salva novo cliente ────────────────────────────────────────────────────
@@ -239,6 +277,16 @@ export default function ClientesPage() {
       />
 
       <div className="p-8">
+        {/* Busca */}
+        <div className="relative mb-5 max-w-sm">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
+          <input
+            value={busca} onChange={e => setBusca(e.target.value)}
+            placeholder="Buscar por nome, CNPJ ou e-mail..."
+            className="w-full bg-white/5 border border-white/10 rounded-xl pl-9 pr-4 py-2.5 text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-white/25 transition-all"
+          />
+        </div>
+
         {/* ── Lista + painel lateral ── */}
         <div className="flex gap-6">
           <div className="flex-1 space-y-3">
@@ -253,7 +301,13 @@ export default function ClientesPage() {
                 </div>
               </Card>
             ) : (
-              clientes.map(cliente => (
+              clientes
+                .filter(c => !busca.trim() ||
+                  c.nome.toLowerCase().includes(busca.toLowerCase()) ||
+                  c.cnpj.includes(busca) ||
+                  c.email.toLowerCase().includes(busca.toLowerCase())
+                )
+                .map(cliente => (
                 <Card
                   key={cliente.id}
                   onClick={() => selecionarCliente(cliente)}
@@ -407,40 +461,73 @@ export default function ClientesPage() {
 
                   <div className="space-y-2">
                     <Button
-                      variant="primary"
-                      size="sm"
-                      className="w-full"
-                      onClick={() => gerarToken(selecionado)}
-                      loading={gerandoToken}
+                      variant="secondary" size="sm" className="w-full"
+                      onClick={() => { setAbaAcesso('graficos'); abrirModalAcesso() }}
                     >
-                      <Key size={13} />
-                      Gerar Token do Agente
-                    </Button>
-                    <Button variant="secondary" size="sm" className="w-full">
                       <BarChart3 size={13} />
                       Ver Gráficos Associados
+                    </Button>
+                    <Button
+                      variant="secondary" size="sm" className="w-full"
+                      onClick={() => { setAbaAcesso('dashboards'); abrirModalAcesso() }}
+                    >
+                      <LayoutDashboard size={13} />
+                      Ver Dashboards Associados
                     </Button>
                   </div>
                 </div>
               </Card>
 
-              {token && (
-                <Card>
-                  <div className="p-4">
-                    <p className="text-[#009c3b] text-xs font-semibold mb-2 uppercase tracking-wider">
-                      Token JWT do Agente
-                    </p>
-                    <div className="bg-black/40 rounded-lg p-3 mb-3">
-                      <code className="text-green-400 text-[10px] break-all leading-relaxed font-mono">
-                        {token}
-                      </code>
-                    </div>
-                    <p className="text-white/30 text-xs">
-                      Cole em <code className="text-white/50">config.json → jwt_token</code> no servidor do cliente.
+              {/* ── Instalador do Agente ── */}
+              <Card>
+                <div className="p-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Terminal size={13} className="text-[#009c3b]" />
+                    <p className="text-[#009c3b] text-xs font-semibold uppercase tracking-wider">
+                      Instalador do Agente
                     </p>
                   </div>
-                </Card>
-              )}
+                  <p className="text-white/30 text-[10px] mb-3 leading-relaxed">
+                    O técnico digita banco, usuário e senha diretamente no Windows.
+                  </p>
+
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    className="w-full mb-3"
+                    onClick={() => gerarInstalador(selecionado)}
+                    loading={gerandoInstalador}
+                  >
+                    <Key size={13} />
+                    Gerar Token de Instalação
+                  </Button>
+
+                  {setupCommand && (
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <p className="text-white/30 text-[10px] uppercase tracking-wider">
+                          PowerShell (como Administrador)
+                        </p>
+                        <button
+                          onClick={copiarComando}
+                          className={`flex items-center gap-1 text-[10px] transition-colors px-2 py-0.5 rounded ${copiado ? 'text-[#009c3b]' : 'text-white/40 hover:text-white'}`}
+                        >
+                          {copiado ? <Check size={10} /> : <Copy size={10} />}
+                          {copiado ? 'Copiado!' : 'Copiar'}
+                        </button>
+                      </div>
+                      <div className="bg-black/50 border border-white/8 rounded-lg p-3 max-h-40 overflow-y-auto">
+                        <pre className="text-green-400 text-[10px] leading-relaxed font-mono whitespace-pre-wrap break-all">
+                          {setupCommand}
+                        </pre>
+                      </div>
+                      <p className="text-white/25 text-[10px] mt-2 leading-relaxed">
+                        Cole no PowerShell do cliente — o instalador pergunta banco, usuário e senha.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </Card>
             </div>
           )}
         </div>
@@ -581,6 +668,135 @@ export default function ClientesPage() {
           </div>
         </div>
       )}
+
+      {/* ── Modal Gráficos / Dashboards ── */}
+      {modalAcesso && selecionado && (() => {
+        const ICON_MAP: Record<string, React.ElementType> = {
+          line: LineChart, bar: BarChart3, pie: PieChart, gauge: Gauge,
+          area: TrendingUp, report: TableProperties, kpi: Flame,
+          heatmap: Layers, waterfall: BarChart3, button: MousePointerClick,
+        }
+        const clienteId = selecionado.id
+        const templatesLib = SYSTEM_TEMPLATES.filter(t => {
+          const l = libTemplates[t.id]
+          return l && (l.is_publico || l.cliente_ids.includes(clienteId))
+        })
+        const dashboardsLib = todosDashboards.filter(d =>
+          d.isPublico || (d.clienteIds ?? []).includes(clienteId)
+        )
+
+        return (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+            onClick={() => setModalAcesso(false)}
+          >
+            <div
+              className="w-full max-w-lg bg-[#0f1117] border border-white/10 rounded-2xl shadow-2xl max-h-[80vh] flex flex-col"
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between px-6 py-4 border-b border-white/8 flex-shrink-0">
+                <div>
+                  <h2 className="text-white font-semibold text-base">Acessos Liberados</h2>
+                  <p className="text-white/40 text-xs">{selecionado.nome}</p>
+                </div>
+                <button onClick={() => setModalAcesso(false)} className="text-white/40 hover:text-white transition-colors">
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Tabs */}
+              <div className="flex border-b border-white/8 flex-shrink-0">
+                {([['graficos', 'Gráficos', templatesLib.length],
+                   ['dashboards', 'Dashboards', dashboardsLib.length]] as const).map(([key, label, count]) => (
+                  <button
+                    key={key}
+                    onClick={() => setAbaAcesso(key)}
+                    className={`flex-1 px-4 py-3 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
+                      abaAcesso === key
+                        ? 'text-white border-b-2 border-[#009c3b]'
+                        : 'text-white/40 hover:text-white/70'
+                    }`}
+                  >
+                    {label}
+                    <Badge variant={count > 0 ? 'success' : 'default'}>{count}</Badge>
+                  </button>
+                ))}
+              </div>
+
+              {/* Body */}
+              <div className="flex-1 overflow-y-auto p-5">
+                {carregandoLib ? (
+                  <div className="flex items-center justify-center py-12 text-white/30 text-sm gap-2">
+                    <Loader2 size={16} className="animate-spin" />Carregando…
+                  </div>
+                ) : abaAcesso === 'graficos' ? (
+                  templatesLib.length === 0 ? (
+                    <div className="text-center py-12 text-white/30 text-sm">
+                      Nenhum gráfico liberado para este cliente.<br />
+                      <span className="text-white/20 text-xs">Use a página de Gráficos para liberar.</span>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {templatesLib.map(t => {
+                        const Icon = ICON_MAP[t.chart_type] ?? BarChart3
+                        return (
+                          <div key={t.id} className="flex items-center gap-3 px-4 py-3 rounded-xl bg-white/3 border border-white/6">
+                            <div className="w-8 h-8 rounded-lg bg-[#009c3b]/10 border border-[#009c3b]/20 flex items-center justify-center flex-shrink-0">
+                              <Icon size={14} className="text-[#009c3b]" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-white/90 text-sm font-medium truncate">{t.nome}</p>
+                              <p className="text-white/30 text-xs truncate">{t.descricao}</p>
+                            </div>
+                            <Badge variant={libTemplates[t.id]?.is_publico ? 'success' : 'info'}>
+                              {libTemplates[t.id]?.is_publico ? 'Público' : 'Liberado'}
+                            </Badge>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )
+                ) : (
+                  dashboardsLib.length === 0 ? (
+                    <div className="text-center py-12 text-white/30 text-sm">
+                      Nenhum dashboard liberado para este cliente.<br />
+                      <span className="text-white/20 text-xs">Use a página de Dashboards para liberar.</span>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {dashboardsLib.map(d => (
+                        <div key={d.id} className="flex items-center gap-3 px-4 py-3 rounded-xl bg-white/3 border border-white/6">
+                          <div
+                            className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 border"
+                            style={{ backgroundColor: (d.cor ?? '#009c3b') + '18', borderColor: (d.cor ?? '#009c3b') + '35' }}
+                          >
+                            <PanelsTopLeft size={14} style={{ color: d.cor ?? '#009c3b' }} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-white/90 text-sm font-medium truncate">{d.nome}</p>
+                            <p className="text-white/30 text-xs truncate">{d.descricao}</p>
+                          </div>
+                          <Badge variant={d.isPublico ? 'success' : 'info'}>
+                            {d.isPublico ? 'Público' : 'Liberado'}
+                          </Badge>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="px-6 py-4 border-t border-white/8 flex-shrink-0">
+                <Button variant="secondary" className="w-full" onClick={() => setModalAcesso(false)}>
+                  Fechar
+                </Button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* ── Modal Novo Cliente ── */}
       {modalAberto && (

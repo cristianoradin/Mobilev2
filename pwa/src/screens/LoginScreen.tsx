@@ -44,14 +44,13 @@ export function LoginScreen() {
   return (
     <div className="min-h-screen bg-bg flex flex-col items-center justify-center px-6 transition-colors duration-200">
       {/* Logo */}
-      <div className="flex flex-col items-center gap-4 mb-10">
-        <div className="w-20 h-20 rounded-3xl bg-primary flex items-center justify-center shadow-xl shadow-primary/30">
-          <span className="text-white font-black text-2xl">SGA</span>
-        </div>
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-ink">SGA Petro</h1>
-          <p className="text-sm text-ink/50 mt-1">Gestão inteligente do seu posto</p>
-        </div>
+      <div className="flex flex-col items-center gap-3 mb-10">
+        <img
+          src="/logo.png"
+          alt="SGA Petro"
+          className="h-12 w-auto object-contain"
+        />
+        <p className="text-sm text-ink/50">Gestão inteligente do seu posto</p>
       </div>
 
       {/* Form */}

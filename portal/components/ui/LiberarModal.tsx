@@ -25,11 +25,12 @@ interface LiberarModalProps {
   itemNome:   string
   itemTipo:   'template' | 'dashboard'
   liberacao:  LiberacaoState
+  apiUrl?:    string                        // se fornecido, persiste via PUT
   onSalvar:   (nova: LiberacaoState) => void
   onFechar:   () => void
 }
 
-export function LiberarModal({ itemNome, itemTipo, liberacao, onSalvar, onFechar }: LiberarModalProps) {
+export function LiberarModal({ itemNome, itemTipo, liberacao, apiUrl, onSalvar, onFechar }: LiberarModalProps) {
   const [estado,     setEstado]     = useState<LiberacaoState>(liberacao)
   const [clientes,   setClientes]   = useState<ClienteBasic[]>([])
   const [carregando, setCarregando] = useState(false)
@@ -64,10 +65,18 @@ export function LiberarModal({ itemNome, itemTipo, liberacao, onSalvar, onFechar
 
   async function handleSalvar() {
     setSalvando(true)
-    // Simula chamada à API — aqui entraria o fetch real
-    await new Promise(r => setTimeout(r, 400))
-    onSalvar(estado)
-    setSalvando(false)
+    try {
+      if (apiUrl) {
+        await fetch(apiUrl, {
+          method:  'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ is_publico: estado.is_publico, cliente_ids: estado.cliente_ids }),
+        })
+      }
+      onSalvar(estado)
+    } finally {
+      setSalvando(false)
+    }
   }
 
   const badgePublico = estado.is_publico

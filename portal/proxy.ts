@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifySessionToken, SESSION_COOKIE } from '@/lib/session'
 
-const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/auth/logout']
+// /agent/ — binários do agente servidos sem autenticação para download pelo agente no posto
+const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/auth/logout', '/agent/']
 
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl
@@ -33,5 +34,6 @@ export async function proxy(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+  // Exclui assets estáticos do public/ além das rotas internas do Next.js
+  matcher: ['/((?!_next/static|_next/image|favicon\\.ico|.*\\.(?:png|svg|ico|jpg|jpeg|webp|gif|woff2?|ttf|otf|webmanifest|txt|xml)$).*)'],
 }

@@ -1,4 +1,28 @@
-export type ChartType = 'line' | 'bar' | 'pie' | 'gauge' | 'area'
+export type ChartType = 'line' | 'bar' | 'pie' | 'gauge' | 'area' | 'tank' | 'report' | 'kpi' | 'heatmap' | 'waterfall' | 'button'
+
+// ── Tank Config ───────────────────────────────────────────────────────────────
+export interface TankProductColor {
+  produto: string
+  color:   string
+}
+
+export interface TankConfig {
+  field_produto:     string
+  field_volume:      string
+  field_capacidade:  string
+  field_disponivel?: string
+  field_percentual?: string
+  unidade:           string
+  threshold_low:     number
+  threshold_mid:     number
+  colunas:           1 | 2
+
+  // Aparência
+  font_size_produto?:    number
+  font_size_volume?:     number
+  font_size_percentual?: number
+  product_colors?:       TankProductColor[]
+}
 export type UserRole  = 'operador' | 'gerente' | 'dono'
 
 export interface ChartMetadata {
@@ -20,7 +44,11 @@ export interface ChartMetadata {
     show_tooltip: boolean
     gradient?: boolean
   }
-  permissions: { min_role: UserRole }
+  permissions:  { min_role: UserRole }
+  tank_config?: TankConfig
+  categoria?:   string
+  descricao?:   string
+  is_publico?:  boolean
 }
 
 export interface MQTTCommand {

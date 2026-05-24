@@ -1,15 +1,15 @@
-import { User, Building2, Shield, Bell, Sun, Moon, LogOut, Users, ChevronRight } from 'lucide-react'
+import { User, Building2, Shield, Bell, LogOut, Users, ChevronRight, Palette } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth }  from '@/core/auth/AuthContext'
 import { useMQTT }  from '@/core/mqtt/MQTTContext'
-import { useTheme } from '@/core/theme/ThemeContext'
+import { useTheme, THEMES } from '@/core/theme/ThemeContext'
 import { Card }     from '@/components/ui/Card'
 import { Badge }    from '@/components/ui/Badge'
 
 export function ConfigScreen() {
   const { session, logout }     = useAuth()
   const { connected }           = useMQTT()
-  const { isDark, toggleTheme } = useTheme()
+  const { theme }               = useTheme()
   const navigate                = useNavigate()
 
   if (!session) return null
@@ -38,7 +38,8 @@ export function ConfigScreen() {
     {
       titulo: 'Preferências',
       items: [
-        { icon: Bell, label: 'Notificações', sub: 'Alertas de desconto e estoque', onClick: undefined },
+        { icon: Bell,    label: 'Notificações', sub: 'Comunicados e alertas recebidos',                         onClick: () => navigate('/config/notificacoes') },
+        { icon: Palette, label: 'Aparência',    sub: THEMES.find(t => t.id === theme)?.label ?? 'Escuro',       onClick: () => navigate('/config/aparencia')    },
       ],
     },
   ]
@@ -110,34 +111,6 @@ export function ConfigScreen() {
           </Card>
         </div>
       ))}
-
-      {/* Toggle de tema */}
-      <div>
-        <h2 className="text-xs font-semibold text-ink/40 uppercase tracking-wider mb-3">
-          Aparência
-        </h2>
-        <Card>
-          <button
-            onClick={toggleTheme}
-            className="w-full flex items-center gap-3 px-4 py-4 hover:bg-ink/5 transition-colors text-left"
-          >
-            {isDark
-              ? <Sun  size={18} className="text-yellow" />
-              : <Moon size={18} className="text-purple" />
-            }
-            <div className="flex-1 min-w-0">
-              <p className="text-ink text-sm font-medium">Tema</p>
-              <p className="text-ink/40 text-xs mt-0.5">
-                {isDark ? 'Escuro (ativo) — toque para ativar o claro' : 'Claro (ativo) — toque para ativar o escuro'}
-              </p>
-            </div>
-            {/* Switch visual */}
-            <div className={`relative w-12 h-6 rounded-full transition-colors duration-300 ${isDark ? 'bg-surface2' : 'bg-primary'}`}>
-              <div className={`absolute top-1 w-4 h-4 rounded-full bg-ink shadow transition-all duration-300 ${isDark ? 'left-1' : 'left-7'}`} />
-            </div>
-          </button>
-        </Card>
-      </div>
 
       {/* Logout */}
       <button

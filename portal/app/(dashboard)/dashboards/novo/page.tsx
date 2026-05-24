@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Badge } from '@/components/ui/Badge'
 import { Card, CardBody } from '@/components/ui/Card'
+import { useToast, Toaster } from '@/components/ui/Toast'
 import {
   Plus, Save, Search, BarChart3, LineChart, PieChart, Gauge, TrendingUp,
   TableProperties, Flame, Layers, MousePointerClick, ChevronUp, ChevronDown,
@@ -278,6 +279,7 @@ function GridPreview({ widgets }: { widgets: DashboardWidget[] }) {
 // ── Página principal ──────────────────────────────────────────────────────────
 export default function NovoDashboardPage() {
   const router = useRouter()
+  const { toasts, toast, dismiss } = useToast()
   const [nome, setNome]         = useState('')
   const [descricao, setDescricao] = useState('')
   const [cor, setCor]           = useState(COLORS[0])
@@ -334,10 +336,27 @@ export default function NovoDashboardPage() {
   }
 
   async function handleSave() {
-    if (!nome.trim() || widgets.length === 0) return
+    if (!nome.trim()) { toast('Nome é obrigatório', 'error'); return }
+    if (widgets.length === 0) { toast('Adicione pelo menos um widget', 'warning'); return }
     setSaving(true)
-    await new Promise(r => setTimeout(r, 600)) // mock save
-    router.push('/dashboards')
+    try {
+      const res = await fetch('/api/dashboards', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nome: nome.trim(), descricao: descricao.trim() || null, cor, widgets }),
+      })
+      if (!res.ok) {
+        const d = await res.json()
+        toast(d.error ?? 'Erro ao salvar dashboard', 'error')
+        return
+      }
+      toast('Dashboard criado com sucesso!', 'success')
+      setTimeout(() => router.push('/dashboards'), 1200)
+    } catch {
+      toast('Erro de conexão ao salvar', 'error')
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -508,6 +527,7 @@ export default function NovoDashboardPage() {
           </div>
         </div>
       </div>
+      <Toaster toasts={toasts} onDismiss={dismiss} />
     </div>
   )
 }

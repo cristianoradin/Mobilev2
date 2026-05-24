@@ -1,7 +1,8 @@
 'use client'
 import { useState, FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
-import { Fuel, LogIn, Eye, EyeOff, AlertCircle } from 'lucide-react'
+import Image from 'next/image'
+import { LogIn, Eye, EyeOff, AlertCircle } from 'lucide-react'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -39,11 +40,15 @@ export default function LoginPage() {
     <div className="w-full max-w-sm px-4">
       {/* Logo */}
       <div className="flex flex-col items-center mb-8">
-        <div className="w-16 h-16 bg-[#009c3b] rounded-2xl flex items-center justify-center shadow-xl shadow-[#009c3b]/30 mb-4">
-          <Fuel size={28} className="text-white" />
-        </div>
-        <h1 className="text-white font-bold text-2xl tracking-tight">SGA Petro</h1>
-        <p className="text-white/40 text-sm mt-1">Portal Administrativo</p>
+        <Image
+          src="/logo.png"
+          alt="SGA Petro"
+          width={200}
+          height={54}
+          className="h-14 w-auto object-contain mb-3"
+          priority
+        />
+        <p className="text-white/40 text-sm">Portal Administrativo</p>
       </div>
 
       {/* Card */}

@@ -5,7 +5,33 @@ export interface DateRange {
   from: Date | null
   to:   Date | null
 }
-export type ChartType = 'line' | 'bar' | 'pie' | 'gauge' | 'area' | 'report' | 'kpi' | 'heatmap' | 'waterfall' | 'button'
+export type ChartType = 'line' | 'bar' | 'pie' | 'gauge' | 'area' | 'report' | 'kpi' | 'heatmap' | 'waterfall' | 'button' | 'tank'
+
+// ── Tank Widget (Estoque de Tanques) ──────────────────────────────────────────
+export interface TankProductColor {
+  produto: string   // nome exato do produto (match case-insensitive)
+  color:   string   // hex color, ex: '#3b82f6'
+}
+
+export interface TankConfig {
+  field_produto:     string   // campo SQL com nome do produto
+  field_volume:      string   // campo SQL com volume atual (litros)
+  field_capacidade:  string   // campo SQL com capacidade total
+  field_disponivel?: string   // campo SQL com espaço disponível (calculado se omitido)
+  field_percentual?: string   // campo SQL com % (calculado de vol/cap se omitido)
+  unidade:           string   // rótulo da unidade — padrão 'L'
+  threshold_low:     number   // % abaixo = vermelho (padrão 25)
+  threshold_mid:     number   // % abaixo = amarelo (padrão 50)
+  colunas:           1 | 2   // tanques por linha
+
+  // Aparência — tamanhos de fonte (px)
+  font_size_produto?:    number   // nome do produto (padrão 12)
+  font_size_volume?:     number   // volume atual — número grande (padrão 20)
+  font_size_percentual?: number   // badge % no cilindro SVG (padrão 11)
+
+  // Cores fixas por produto (sobrescreve cor de threshold quando definido)
+  product_colors?: TankProductColor[]
+}
 
 // ── KPI Card ──────────────────────────────────────────────────────────────────
 export interface KpiMetric {
@@ -154,9 +180,11 @@ export interface ChartMetadata {
   }
   permissions:    { min_role: UserRole }
   is_publico:     boolean
+  cliente_ids?:   string[]
   report_config?:  ReportConfig        // chart_type === 'report'
   kpi_config?:     KpiConfig           // chart_type === 'kpi'
   button_config?:  ButtonWidgetConfig  // chart_type === 'button'
+  tank_config?:    TankConfig          // chart_type === 'tank'
   created_at?:    string
 }
 
@@ -229,3 +257,16 @@ export const MOCK_CLIENTES: Cliente[] = [
 ]
 
 export const CATEGORIAS = ['vendas', 'estoque', 'financeiro', 'operacional', 'geral']
+
+// ── Sessão do usuário PWA (gerada pelo pwa-login e usada no preview) ──────────
+export interface UserSession {
+  id:         string
+  nome:       string
+  email:      string
+  role:       UserRole
+  cliente_id: string
+  cnpj:       string
+  empresas:   Array<{ id: number; nome: string; is_master: boolean }>
+  jwt:        string
+  expires_at: number
+}

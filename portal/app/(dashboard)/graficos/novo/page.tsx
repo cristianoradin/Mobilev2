@@ -1,6 +1,7 @@
 'use client'
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { useToast, Toaster } from '@/components/ui/Toast'
 import { SQLEditor }       from '@/components/sql-builder/SQLEditor'
 import { ChartPreview }    from '@/components/charts/ChartPreview'
 import { ReportPreview }   from '@/components/reports/ReportPreview'
@@ -8,6 +9,7 @@ import { KpiPreview }      from '@/components/charts/KpiPreview'
 import { HeatmapPreview }  from '@/components/charts/HeatmapPreview'
 import { WaterfallPreview} from '@/components/charts/WaterfallPreview'
 import { ButtonPreview }   from '@/components/charts/ButtonPreview'
+import { TankPreview }    from '@/components/charts/TankPreview'
 import { TopBar }  from '@/components/layout/TopBar'
 import { Button }  from '@/components/ui/Button'
 import { Input }   from '@/components/ui/Input'
@@ -15,7 +17,7 @@ import { cn }      from '@/lib/cn'
 import { ICON_NAMES, ICON_REGISTRY } from '@/lib/icons'
 import {
   Save, Plus, Trash2, RefreshCw, Calendar, CalendarRange,
-  TableProperties, BarChart3, Activity, Flame, Layers, MousePointerClick,
+  TableProperties, BarChart3, Activity, Flame, Layers, MousePointerClick, Fuel,
 } from 'lucide-react'
 import { DateRangePicker } from '@/components/ui/DateRangePicker'
 import type { DateRange } from '@/components/ui/DateRangePicker'
@@ -24,6 +26,7 @@ import type {
   ReportColumn, ReportColumnFormat, ReportSummaryFn,
   KpiMetric, KpiConfig,
   ButtonWidgetItem, ButtonWidgetConfig, ButtonVariant, ButtonSize,
+  TankConfig,
   TemplateDateFilter, DatePreset,
 } from '@/lib/types'
 
@@ -42,6 +45,7 @@ const CHART_TYPES: { value: ChartType; label: string; icon: React.ElementType; c
   { value: 'heatmap',   label: 'Heatmap',   icon: Layers,             color: '#8b5cf6' },
   { value: 'waterfall', label: 'Waterfall', icon: BarChart3,          color: '#06b6d4' },
   { value: 'button',    label: 'Botões',    icon: MousePointerClick,  color: '#f43f5e' },
+  { value: 'tank',      label: 'Tanques',   icon: Fuel,               color: '#009c3b' },
 ]
 
 const ROLES: { value: UserRole; label: string }[] = [
@@ -112,6 +116,18 @@ const DEFAULT_BUTTON: ButtonWidgetConfig = {
   ],
 }
 
+const DEFAULT_TANK: TankConfig = {
+  field_produto:    'produto',
+  field_volume:     'volume_atual',
+  field_capacidade: 'capacidade_total',
+  field_disponivel: 'espaco_disponivel',
+  field_percentual: '',
+  unidade:          'L',
+  threshold_low:    25,
+  threshold_mid:    50,
+  colunas:          1,
+}
+
 const DEFAULT_DATE_FILTER: TemplateDateFilter = {
   enabled:        false,
   param_inicio:   ':data_inicio',
@@ -142,6 +158,7 @@ const DEFAULT_META: ChartMetadata = {
   report_config: { columns: DEFAULT_COLUMNS, show_totals: true, show_index: false },
   kpi_config:    DEFAULT_KPI,
   button_config: DEFAULT_BUTTON,
+  tank_config:   DEFAULT_TANK,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -446,11 +463,39 @@ function BtnRow({
 // ─────────────────────────────────────────────────────────────────────────────
 // Página principal
 // ─────────────────────────────────────────────────────────────────────────────
-export default function NovoGraficoPage() {
-  const router = useRouter()
+function NovoGraficoContent() {
+  const router       = useRouter()
+  const searchParams = useSearchParams()
+  const editId       = searchParams.get('edit')   // editar template existente
+  const fromId       = searchParams.get('from')   // duplicar template
+  const isEditing    = !!editId && !editId.startsWith('tmpl-') // tmpl-* → cria novo no DB
+
+  const { toasts, toast, dismiss } = useToast()
   const [meta,       setMeta]       = useState<ChartMetadata>(DEFAULT_META)
   const [saving,     setSaving]     = useState(false)
   const [previewKey, setPreviewKey] = useState(0)
+  const [loadingTemplate, setLoadingTemplate] = useState(false)
+
+  // ── Carrega template existente para editar ou duplicar ───────────────────
+  useEffect(() => {
+    const id = editId ?? fromId
+    if (!id) return
+    setLoadingTemplate(true)
+    fetch(`/api/graficos/${id}`)
+      .then(r => r.json())
+      .then((data: { template?: ChartMetadata }) => {
+        if (!data.template) { toast('Template não encontrado', 'error'); return }
+        setMeta({
+          ...data.template,
+          id:   fromId ? '' : (data.template.id ?? ''),
+          nome: fromId ? `(Cópia) ${data.template.nome}` : data.template.nome,
+        })
+        setPreviewKey(k => k + 1)
+      })
+      .catch(() => toast('Erro ao carregar template', 'error'))
+      .finally(() => setLoadingTemplate(false))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const type = meta.chart_type
 
@@ -466,6 +511,7 @@ export default function NovoGraficoPage() {
       kpi_config:    prev.kpi_config    ?? DEFAULT_KPI,
       button_config: prev.button_config ?? DEFAULT_BUTTON,
       report_config: prev.report_config ?? { columns: DEFAULT_COLUMNS, show_totals: true, show_index: false },
+      tank_config:   prev.tank_config   ?? DEFAULT_TANK,
     }))
     setPreviewKey(k => k + 1)
   }
@@ -570,17 +616,38 @@ export default function NovoGraficoPage() {
 
   // ── save ────────────────────────────────────────────────────────────────
   async function handleSave() {
-    if (!meta.nome.trim()) return alert('Nome é obrigatório')
-    const needsSQL = !['button'].includes(type)
+    if (!meta.nome.trim()) {
+      toast('Nome é obrigatório', 'error')
+      return
+    }
+    const needsSQL = !['button', 'tank'].includes(type)
     if (needsSQL && !meta.query.sql.includes(':empresas_filtradas')) {
-      return alert('O SQL deve conter :empresas_filtradas para isolamento multiempresa')
+      toast('O SQL deve conter :empresas_filtradas para isolamento multiempresa', 'warning')
+      return
     }
     setSaving(true)
     try {
-      await fetch('/api/graficos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(meta) })
-      router.push('/graficos')
-    } catch { alert('Erro ao salvar template') }
-    finally { setSaving(false) }
+      if (isEditing && editId) {
+        // Atualiza template existente no DB
+        const res = await fetch(`/api/graficos/${editId}`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(meta),
+        })
+        if (!res.ok) { const d = await res.json(); toast(d.error ?? 'Erro ao atualizar', 'error'); return }
+        toast('Template atualizado com sucesso!', 'success')
+      } else {
+        // Cria novo (inclui duplicar e editar template do sistema)
+        const res = await fetch('/api/graficos', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(meta),
+        })
+        if (!res.ok) { const d = await res.json(); toast(d.error ?? 'Erro ao salvar', 'error'); return }
+        toast(fromId ? 'Cópia criada com sucesso!' : 'Template criado com sucesso!', 'success')
+      }
+      setTimeout(() => router.push('/graficos'), 1200)
+    } catch {
+      toast('Erro ao salvar template', 'error')
+    } finally {
+      setSaving(false)
+    }
   }
 
   // ── Seleção de preview ──────────────────────────────────────────────────
@@ -591,6 +658,7 @@ export default function NovoGraficoPage() {
       case 'heatmap':   return <HeatmapPreview  metadata={meta} key={previewKey} />
       case 'waterfall': return <WaterfallPreview metadata={meta} key={previewKey} />
       case 'button':    return <ButtonPreview   metadata={meta} key={previewKey} />
+      case 'tank':      return <TankPreview     metadata={meta} key={previewKey} />
       default:          return <ChartPreview    metadata={meta} key={previewKey} />
     }
   }
@@ -601,11 +669,15 @@ export default function NovoGraficoPage() {
   return (
     <div className="flex flex-col h-screen">
       <TopBar
-        title={`Novo Template${type === 'report' ? ' de Relatório' : type === 'kpi' ? ' KPI' : type === 'button' ? ' de Botões' : ' de Gráfico'}`}
-        subtitle="Construtor SQL + Preview ao vivo"
+        title={
+          isEditing ? 'Editar Template'
+          : fromId  ? 'Duplicar Template'
+          : `Novo Template${type === 'report' ? ' de Relatório' : type === 'kpi' ? ' KPI' : type === 'button' ? ' de Botões' : type === 'tank' ? ' de Tanques' : ' de Gráfico'}`
+        }
+        subtitle={loadingTemplate ? 'Carregando…' : 'Construtor SQL + Preview ao vivo'}
         actions={
-          <Button onClick={handleSave} loading={saving}>
-            <Save size={14} />Salvar Template
+          <Button onClick={handleSave} loading={saving} disabled={loadingTemplate}>
+            <Save size={14} />{isEditing ? 'Salvar Alterações' : fromId ? 'Criar Cópia' : 'Salvar Template'}
           </Button>
         }
       />
@@ -892,8 +964,218 @@ export default function NovoGraficoPage() {
               </div>
             )}
 
+            {/* ── TANQUES ── */}
+            {type === 'tank' && (
+              <div className="space-y-5">
+                {/* Campos SQL */}
+                <div>
+                  <p className="text-xs font-medium text-white/50 uppercase tracking-wider mb-3">Campos SQL</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Input label="Produto (nome)"     placeholder="produto"
+                      value={meta.tank_config?.field_produto    ?? 'produto'}
+                      onChange={e => setMeta(p => ({ ...p, tank_config: { ...(p.tank_config ?? DEFAULT_TANK), field_produto: e.target.value } }))} />
+                    <Input label="Volume Atual"        placeholder="volume_atual"
+                      value={meta.tank_config?.field_volume     ?? 'volume_atual'}
+                      onChange={e => setMeta(p => ({ ...p, tank_config: { ...(p.tank_config ?? DEFAULT_TANK), field_volume: e.target.value } }))} />
+                    <Input label="Capacidade Total"    placeholder="capacidade_total"
+                      value={meta.tank_config?.field_capacidade ?? 'capacidade_total'}
+                      onChange={e => setMeta(p => ({ ...p, tank_config: { ...(p.tank_config ?? DEFAULT_TANK), field_capacidade: e.target.value } }))} />
+                    <Input label="Disponível (opcional)" placeholder="espaco_disponivel"
+                      value={meta.tank_config?.field_disponivel ?? ''}
+                      onChange={e => setMeta(p => ({ ...p, tank_config: { ...(p.tank_config ?? DEFAULT_TANK), field_disponivel: e.target.value || undefined } }))} />
+                    <Input label="Percentual (opcional)" placeholder="calculado auto"
+                      value={meta.tank_config?.field_percentual ?? ''}
+                      onChange={e => setMeta(p => ({ ...p, tank_config: { ...(p.tank_config ?? DEFAULT_TANK), field_percentual: e.target.value || undefined } }))} />
+                    <Input label="Unidade"             placeholder="L"
+                      value={meta.tank_config?.unidade          ?? 'L'}
+                      onChange={e => setMeta(p => ({ ...p, tank_config: { ...(p.tank_config ?? DEFAULT_TANK), unidade: e.target.value } }))} />
+                  </div>
+                  <p className="text-white/25 text-[10px] mt-2">
+                    Se <span className="text-white/40 font-mono">Disponível</span> não for informado, será calculado como{' '}
+                    <span className="text-[#009c3b]/70 font-mono">capacidade − volume</span>.
+                    Se <span className="text-white/40 font-mono">Percentual</span> não for informado, será{' '}
+                    <span className="text-[#009c3b]/70 font-mono">volume / capacidade × 100</span>.
+                  </p>
+                </div>
+
+                {/* Limiares de cor */}
+                <div>
+                  <p className="text-xs font-medium text-white/50 uppercase tracking-wider mb-3">Limiares de Cor</p>
+                  <div className="flex items-center gap-4 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <span className="w-3 h-3 rounded-full bg-[#ef4444] flex-shrink-0" />
+                      <span className="text-white/50 text-xs">Crítico abaixo de</span>
+                      <input
+                        type="number" min={1} max={99}
+                        value={meta.tank_config?.threshold_low ?? 25}
+                        onChange={e => setMeta(p => ({ ...p, tank_config: { ...(p.tank_config ?? DEFAULT_TANK), threshold_low: +e.target.value } }))}
+                        className="w-16 bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-white text-xs text-center focus:outline-none focus:border-[#ef4444]/50"
+                      />
+                      <span className="text-white/30 text-xs">%</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-3 h-3 rounded-full bg-[#eab308] flex-shrink-0" />
+                      <span className="text-white/50 text-xs">Alerta abaixo de</span>
+                      <input
+                        type="number" min={1} max={99}
+                        value={meta.tank_config?.threshold_mid ?? 50}
+                        onChange={e => setMeta(p => ({ ...p, tank_config: { ...(p.tank_config ?? DEFAULT_TANK), threshold_mid: +e.target.value } }))}
+                        className="w-16 bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-white text-xs text-center focus:outline-none focus:border-[#eab308]/50"
+                      />
+                      <span className="text-white/30 text-xs">%</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-3 h-3 rounded-full bg-[#009c3b] flex-shrink-0" />
+                      <span className="text-white/40 text-xs">Normal acima</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Tamanhos de Fonte */}
+                <div>
+                  <p className="text-xs font-medium text-white/50 uppercase tracking-wider mb-3">Tamanho de Fonte</p>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-[10px] text-white/40 uppercase tracking-wider">Produto (px)</label>
+                      <input
+                        type="number" min={8} max={24}
+                        value={meta.tank_config?.font_size_produto ?? 12}
+                        onChange={e => setMeta(p => ({ ...p, tank_config: { ...(p.tank_config ?? DEFAULT_TANK), font_size_produto: +e.target.value } }))}
+                        className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-xs text-center focus:outline-none focus:border-[#009c3b]/50"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] text-white/40 uppercase tracking-wider">Volume (px)</label>
+                      <input
+                        type="number" min={12} max={48}
+                        value={meta.tank_config?.font_size_volume ?? 22}
+                        onChange={e => setMeta(p => ({ ...p, tank_config: { ...(p.tank_config ?? DEFAULT_TANK), font_size_volume: +e.target.value } }))}
+                        className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-xs text-center focus:outline-none focus:border-[#009c3b]/50"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] text-white/40 uppercase tracking-wider">% Badge (px)</label>
+                      <input
+                        type="number" min={7} max={20}
+                        value={meta.tank_config?.font_size_percentual ?? 13}
+                        onChange={e => setMeta(p => ({ ...p, tank_config: { ...(p.tank_config ?? DEFAULT_TANK), font_size_percentual: +e.target.value } }))}
+                        className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-xs text-center focus:outline-none focus:border-[#009c3b]/50"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Cores por Produto */}
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-xs font-medium text-white/50 uppercase tracking-wider">Cores por Produto</p>
+                    <button
+                      type="button"
+                      onClick={() => setMeta(p => ({
+                        ...p,
+                        tank_config: {
+                          ...(p.tank_config ?? DEFAULT_TANK),
+                          product_colors: [
+                            ...(p.tank_config?.product_colors ?? []),
+                            { produto: '', color: '#3b82f6' },
+                          ],
+                        },
+                      }))}
+                      className="flex items-center gap-1.5 text-xs text-[#009c3b]/70 hover:text-[#009c3b] transition-colors"
+                    >
+                      <Plus size={12} />
+                      Adicionar
+                    </button>
+                  </div>
+                  <div className="space-y-2">
+                    {(meta.tank_config?.product_colors ?? []).length === 0 && (
+                      <p className="text-white/20 text-xs py-2">
+                        Nenhuma cor definida — usa as cores automáticas por nível (🔴 crítico / 🟡 alerta / 🟢 normal).
+                      </p>
+                    )}
+                    {(meta.tank_config?.product_colors ?? []).map((pc, i) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          placeholder="Nome exato do produto"
+                          value={pc.produto}
+                          onChange={e => setMeta(p => {
+                            const colors = [...(p.tank_config?.product_colors ?? [])]
+                            colors[i] = { ...colors[i], produto: e.target.value }
+                            return { ...p, tank_config: { ...(p.tank_config ?? DEFAULT_TANK), product_colors: colors } }
+                          })}
+                          className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-xs placeholder:text-white/20 focus:outline-none focus:border-[#009c3b]/50"
+                        />
+                        <input
+                          type="color"
+                          value={pc.color}
+                          onChange={e => setMeta(p => {
+                            const colors = [...(p.tank_config?.product_colors ?? [])]
+                            colors[i] = { ...colors[i], color: e.target.value }
+                            return { ...p, tank_config: { ...(p.tank_config ?? DEFAULT_TANK), product_colors: colors } }
+                          })}
+                          className="w-9 h-8 rounded-lg cursor-pointer border border-white/10 bg-transparent p-0.5"
+                        />
+                        <div
+                          className="w-5 h-5 rounded-full flex-shrink-0"
+                          style={{ backgroundColor: pc.color }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setMeta(p => {
+                            const colors = (p.tank_config?.product_colors ?? []).filter((_, j) => j !== i)
+                            return { ...p, tank_config: { ...(p.tank_config ?? DEFAULT_TANK), product_colors: colors } }
+                          })}
+                          className="p-1.5 rounded-lg text-white/30 hover:text-red-400 hover:bg-red-500/10 transition-all"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Layout */}
+                <div className="flex items-center gap-3">
+                  <p className="text-xs font-medium text-white/50 uppercase tracking-wider">Layout</p>
+                  <div className="flex gap-1.5">
+                    {([1, 2] as const).map(n => (
+                      <button key={n} type="button"
+                        onClick={() => { setMeta(p => ({ ...p, tank_config: { ...(p.tank_config ?? DEFAULT_TANK), colunas: n } })); setPreviewKey(k => k + 1) }}
+                        className={cn(
+                          'px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
+                          (meta.tank_config?.colunas ?? 1) === n
+                            ? 'bg-[#009c3b]/80 text-white'
+                            : 'bg-white/5 text-white/50 hover:text-white',
+                        )}
+                      >
+                        {n === 1 ? '1 coluna' : '2 colunas'}
+                      </button>
+                    ))}
+                  </div>
+                  <button type="button" onClick={() => setPreviewKey(k => k + 1)}
+                    className="ml-auto flex items-center gap-1.5 text-xs text-white/40 hover:text-white/70 transition-colors">
+                    <RefreshCw size={12} />Preview
+                  </button>
+                </div>
+
+                {/* SQL de exemplo */}
+                <div className="bg-white/[0.03] border border-white/8 rounded-xl p-4">
+                  <p className="text-[10px] font-semibold text-white/30 uppercase tracking-wider mb-2">Exemplo de SQL</p>
+                  <pre className="text-[11px] text-[#009c3b]/70 font-mono leading-relaxed whitespace-pre-wrap">{`SELECT
+  produto,
+  volume_atual,
+  capacidade_total,
+  capacidade_total - volume_atual AS espaco_disponivel
+FROM estoque_tanques
+WHERE empresa_id IN (:empresas_filtradas)
+ORDER BY produto`}</pre>
+                </div>
+              </div>
+            )}
+
             {/* ── GRÁFICOS CLÁSSICOS — eixos + display ── */}
-            {!['report','kpi','heatmap','waterfall','button'].includes(type) && (
+            {!['report','kpi','heatmap','waterfall','button','tank'].includes(type) && (
               <>
                 {/* Altura */}
                 <div className="flex items-center gap-3">
@@ -961,8 +1243,8 @@ export default function NovoGraficoPage() {
               </>
             )}
 
-            {/* ── FILTRO DE DATA — sempre visível exceto button ── */}
-            {type !== 'button' && (
+            {/* ── FILTRO DE DATA — sempre visível exceto button e tank ── */}
+            {!['button', 'tank'].includes(type) && (
               <div className="border border-white/8 rounded-xl overflow-hidden">
                 {/* Header clicável */}
                 <button
@@ -1078,8 +1360,8 @@ export default function NovoGraficoPage() {
               </div>
             )}
 
-            {/* ── Refresh / Timeout — sempre visível (exceto button) ── */}
-            {type !== 'button' && (
+            {/* ── Refresh / Timeout — sempre visível (exceto button e tank) ── */}
+            {!['button', 'tank'].includes(type) && (
               <div className="grid grid-cols-2 gap-4 pt-1 border-t border-white/8">
                 <Input label="Refresh (segundos)" type="number" value={meta.query.refresh_seconds}
                   onChange={e => update('query', { ...meta.query, refresh_seconds: +e.target.value })} />
@@ -1091,6 +1373,17 @@ export default function NovoGraficoPage() {
           </div>{/* fim config scrollável */}
         </div>
       </div>
+
+      {/* Notificações toast */}
+      <Toaster toasts={toasts} onDismiss={dismiss} />
     </div>
+  )
+}
+
+export default function NovoGraficoPage() {
+  return (
+    <Suspense>
+      <NovoGraficoContent />
+    </Suspense>
   )
 }

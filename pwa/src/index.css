@@ -1,9 +1,8 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 @import "tailwindcss";
 
-/* ── Paleta fixa (cores da marca, nunca mudam) ────────────────────────────── */
+/* ── Paleta fixa (cores que nunca mudam) ──────────────────────────────────── */
 @theme {
-  --color-primary:  #009c3b;
   --color-orange:   #f97316;
   --color-blue:     #3b82f6;
   --color-yellow:   #fbbf24;
@@ -12,8 +11,9 @@
   --font-family-sans: 'Inter', system-ui, sans-serif;
 }
 
-/* ── Tokens de tema (mudam com dark/light) — referenciados via CSS var ────── */
+/* ── Tokens de tema (mudam com dark/light/indigo) — via CSS var ───────────── */
 @theme inline {
+  --color-primary:  var(--c-primary);   /* accent muda por tema */
   --color-bg:       var(--c-bg);
   --color-surface:  var(--c-surface);
   --color-surface2: var(--c-surface2);
@@ -24,6 +24,7 @@
 
 /* ── Tema escuro (padrão) ─────────────────────────────────────────────────── */
 :root {
+  --c-primary:  #009c3b;
   --c-bg:       #0a0a0a;
   --c-surface:  #1a1a1a;
   --c-surface2: #111111;
@@ -34,6 +35,7 @@
 
 /* ── Tema claro ───────────────────────────────────────────────────────────── */
 html.light {
+  --c-primary:  #009c3b;
   --c-bg:       #f0f2f5;
   --c-surface:  #ffffff;
   --c-surface2: #eaecef;
@@ -41,6 +43,294 @@ html.light {
   --c-rim2:     #c8cbd2;
   --c-ink:      #111827;
 }
+
+/* ── Tema Índigo — Corporativo Bold ───────────────────────────────────────── */
+html.indigo {
+  --c-primary:  #fbbf24;
+  --c-bg:       #0a0a2e;
+  --c-surface:  #12124a;
+  --c-surface2: #0d0d38;
+  --c-rim:      #1e1e6e;
+  --c-rim2:     #2a2a8a;
+  --c-ink:      #ffffff;
+}
+
+/* Índigo: bordas mais angulares (8px) */
+html.indigo .rounded-2xl { border-radius: 8px; }
+html.indigo .rounded-xl  { border-radius: 6px; }
+html.indigo .rounded-lg  { border-radius: 5px; }
+
+/* Índigo: sombras com tom violeta */
+html.indigo .rounded-2xl,
+html.indigo .rounded-xl {
+  --tw-shadow: 0 2px 12px 0 rgb(30 30 110 / 0.4);
+  box-shadow: var(--tw-shadow);
+}
+
+/* ── Tema Aurora — Galáxia Glass ──────────────────────────────────────────── */
+html.aurora {
+  --c-primary:  #a78bfa;
+  --c-bg:       transparent;             /* AppShell fica transparente → mostra o gradiente */
+  --c-surface:  rgba(255,255,255,0.08);  /* vidro semi-transparente */
+  --c-surface2: rgba(255,255,255,0.04);
+  --c-rim:      rgba(255,255,255,0.14);  /* borda branca translúcida */
+  --c-rim2:     rgba(255,255,255,0.22);
+  --c-ink:      #f0e8ff;                 /* branco lilás suave */
+}
+
+/* Gradiente fixo — fica estático enquanto o conteúdo rola */
+html.aurora body {
+  background: linear-gradient(140deg, #13072e 0%, #1a0a40 45%, #1e0a4a 100%) fixed;
+  background-attachment: fixed;
+}
+
+/* Bordas muito arredondadas */
+html.aurora .rounded-2xl { border-radius: 24px; }
+html.aurora .rounded-xl  { border-radius: 20px; }
+html.aurora .rounded-lg  { border-radius: 16px; }
+
+/* Glass nos cards — backdrop-blur faz o "vidro fosco" sobre o gradiente */
+html.aurora .bg-surface,
+html.aurora .bg-surface\/\[\.97\] {
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+/* Header glass — mais opaco para legibilidade */
+html.aurora header {
+  background: rgba(19,7,46,0.55) !important;
+  backdrop-filter: blur(24px) !important;
+  -webkit-backdrop-filter: blur(24px) !important;
+  border-bottom-color: rgba(255,255,255,0.10) !important;
+}
+
+/* BottomNav glass */
+html.aurora nav {
+  background: rgba(19,7,46,0.55) !important;
+  backdrop-filter: blur(24px) !important;
+  -webkit-backdrop-filter: blur(24px) !important;
+  border-top-color: rgba(255,255,255,0.10) !important;
+}
+
+/* Brilho suave nos cards aurora ao hover */
+html.aurora .cursor-pointer:hover {
+  background-color: rgba(255,255,255,0.11) !important;
+}
+
+/* ── Tema Futura — Terminal / Cyberpunk ───────────────────────────────────── */
+html.futura {
+  --c-primary:  #00e5ff;
+  --c-bg:       #050a12;
+  --c-surface:  #091522;
+  --c-surface2: #060e1a;
+  --c-rim:      rgba(0,229,255,0.30);   /* ciano semi-transparente */
+  --c-rim2:     rgba(0,229,255,0.60);
+  --c-ink:      #b8e0ff;
+}
+
+/* Terminal: sem arredondamento — reto como terminal */
+html.futura .rounded-2xl,
+html.futura .rounded-xl,
+html.futura .rounded-lg,
+html.futura .rounded-md { border-radius: 2px; }
+html.futura .rounded-full { border-radius: 3px; }  /* pills ficam quase quadrados */
+
+/* Glow ciano nas bordas dos cards */
+html.futura .border {
+  box-shadow:
+    0 0  8px rgba(0,229,255,0.12),
+    0 0  2px rgba(0,229,255,0.25),
+    inset 0 0 12px rgba(0,229,255,0.03);
+}
+
+/* Glow mais intenso em cards clicáveis */
+html.futura .cursor-pointer:hover {
+  box-shadow:
+    0 0 14px rgba(0,229,255,0.28),
+    0 0  3px rgba(0,229,255,0.55) !important;
+  border-color: rgba(0,229,255,0.70) !important;
+}
+
+/* Header e Nav com borda ciano + fundo escuro */
+html.futura header {
+  background: rgba(5,10,18,0.96) !important;
+  border-bottom: 1px solid rgba(0,229,255,0.30) !important;
+  box-shadow: 0 1px 12px rgba(0,229,255,0.15) !important;
+}
+html.futura nav {
+  background: rgba(5,10,18,0.96) !important;
+  border-top: 1px solid rgba(0,229,255,0.30) !important;
+  box-shadow: 0 -1px 12px rgba(0,229,255,0.15) !important;
+}
+
+/* Textos de label/placeholder em futura ficam mais frios */
+html.futura .text-ink\/40  { color: rgba(0,229,255,0.40); }
+html.futura .text-ink\/30  { color: rgba(0,229,255,0.30); }
+html.futura .text-ink\/50  { color: rgba(0,229,255,0.50); }
+
+/* ── Tema iPhone — iOS / Apple ────────────────────────────────────────────── */
+html.iphone {
+  --c-primary:  #007aff;
+  --c-bg:       #f2f2f7;              /* systemGroupedBackground */
+  --c-surface:  #ffffff;              /* secondarySystemGroupedBackground */
+  --c-surface2: #f2f2f7;
+  --c-rim:      rgba(60,60,67,0.13);  /* iOS separator hairline */
+  --c-rim2:     rgba(60,60,67,0.22);
+  --c-ink:      #000000;              /* label */
+}
+
+/* iOS corner radius — squircle aproximado */
+html.iphone .rounded-2xl { border-radius: 13px; }
+html.iphone .rounded-xl  { border-radius: 10px; }
+html.iphone .rounded-lg  { border-radius: 8px; }
+html.iphone .rounded-md  { border-radius: 6px; }
+
+/* Cards iOS: sem borda visível, sombra ultra-suave */
+html.iphone .bg-surface.border,
+html.iphone .border.border-rim {
+  border-color: transparent !important;
+  box-shadow:
+    0 1px 3px rgba(0,0,0,0.07),
+    0 0.5px 0   rgba(0,0,0,0.04);
+}
+
+/* Hover em cards iOS — elevação sutil */
+html.iphone .cursor-pointer:hover {
+  box-shadow:
+    0 4px 12px rgba(0,0,0,0.10),
+    0 1px 3px  rgba(0,0,0,0.06) !important;
+}
+
+/* Header: frosted glass — UINavigationBar nativo */
+html.iphone header {
+  background: rgba(242,242,247,0.82) !important;
+  backdrop-filter: blur(20px) saturate(1.8) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(1.8) !important;
+  border-bottom: 0.5px solid rgba(60,60,67,0.20) !important;
+  box-shadow: none !important;
+}
+
+/* TabBar: frosted glass — UITabBar nativo */
+html.iphone nav {
+  background: rgba(242,242,247,0.82) !important;
+  backdrop-filter: blur(20px) saturate(1.8) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(1.8) !important;
+  border-top: 0.5px solid rgba(60,60,67,0.20) !important;
+  box-shadow: none !important;
+}
+
+/* Separadores hairline entre itens de lista */
+html.iphone .divide-y > * + * {
+  border-top-width: 0.5px;
+}
+
+/* Texto secundário no tom iOS */
+html.iphone .text-ink\/40 { color: rgba(60,60,67,0.45); }
+html.iphone .text-ink\/30 { color: rgba(60,60,67,0.32); }
+html.iphone .text-ink\/50 { color: rgba(60,60,67,0.55); }
+html.iphone .text-ink\/20 { color: rgba(60,60,67,0.22); }
+
+/* Inputs iOS */
+html.iphone input::placeholder { color: rgba(60,60,67,0.30); }
+html.iphone input  { color-scheme: light; }
+html.iphone select { color-scheme: light; }
+
+/* Danger button iOS */
+html.iphone .bg-danger\/10 {
+  background-color: rgba(255,59,48,0.08) !important;
+}
+html.iphone .border-danger\/30 {
+  border-color: rgba(255,59,48,0.25) !important;
+}
+
+/* ── Tema SGA — Sistema SGA Petro ─────────────────────────────────────────── */
+html.sga {
+  --c-primary:  #009c3b;
+  --c-bg:       #eff4f0;              /* cinza com leve toque verde — igual ao ERP */
+  --c-surface:  #ffffff;
+  --c-surface2: #f4f9f5;
+  --c-rim:      rgba(0,156,59,0.18);  /* borda verde-translúcida */
+  --c-rim2:     rgba(0,156,59,0.32);
+  --c-ink:      #0d1f10;              /* verde-escuro quase preto */
+}
+
+/* Corner radius igual ao ERP (~14px) */
+html.sga .rounded-2xl { border-radius: 14px; }
+html.sga .rounded-xl  { border-radius: 10px; }
+html.sga .rounded-lg  { border-radius: 8px; }
+html.sga .rounded-md  { border-radius: 6px; }
+
+/* Cards: sombra esverdeada sutil — identidade visual do ERP */
+html.sga .border.border-rim {
+  border-color: rgba(0,156,59,0.16) !important;
+  box-shadow:
+    0 1px 4px rgba(0,156,59,0.10),
+    0 0.5px 0  rgba(0,156,59,0.06);
+}
+
+/* Elevação nos cards clicáveis */
+html.sga .cursor-pointer:hover {
+  box-shadow:
+    0 4px 16px rgba(0,156,59,0.14),
+    0 1px 4px  rgba(0,156,59,0.08) !important;
+  border-color: rgba(0,156,59,0.28) !important;
+}
+
+/* Header: verde sólido — igual à navbar do ERP */
+html.sga header {
+  background: #009c3b !important;
+  backdrop-filter: none !important;
+  border-bottom: 1px solid rgba(0,0,0,0.10) !important;
+  box-shadow: 0 2px 8px rgba(0,100,30,0.20) !important;
+}
+
+/* Todos os elementos dentro do header ficam brancos */
+html.sga header .text-ink,
+html.sga header .text-ink\/60,
+html.sga header .text-ink\/50,
+html.sga header .text-ink\/40 { color: rgba(255,255,255,0.90) !important; }
+html.sga header .text-primary  { color: #ffffff !important; }
+html.sga header .border-rim    { border-color: rgba(255,255,255,0.22) !important; }
+
+/* Dropdown de empresa no header — vidro verde */
+html.sga header .bg-surface {
+  background: rgba(255,255,255,0.18) !important;
+  border-color: rgba(255,255,255,0.25) !important;
+}
+html.sga header .bg-surface .text-ink { color: #ffffff !important; }
+
+/* Dropdown aberto (fundo branco para legibilidade) */
+html.sga header .bg-surface.border.rounded-2xl,
+html.sga header div[class*="absolute"] {
+  background: #ffffff !important;
+  border-color: rgba(0,156,59,0.20) !important;
+}
+html.sga header div[class*="absolute"] .text-ink { color: #0d1f10 !important; }
+html.sga header div[class*="absolute"] .text-primary { color: #009c3b !important; }
+
+/* BottomNav: branco com borda verde */
+html.sga nav {
+  background: rgba(239,244,240,0.94) !important;
+  backdrop-filter: blur(14px) !important;
+  -webkit-backdrop-filter: blur(14px) !important;
+  border-top: 1px solid rgba(0,156,59,0.20) !important;
+  box-shadow: 0 -1px 8px rgba(0,156,59,0.08) !important;
+}
+
+/* Textos secundários com tom verde-escuro */
+html.sga .text-ink\/40 { color: rgba(13,31,16,0.45); }
+html.sga .text-ink\/30 { color: rgba(13,31,16,0.32); }
+html.sga .text-ink\/50 { color: rgba(13,31,16,0.55); }
+html.sga .text-ink\/20 { color: rgba(13,31,16,0.22); }
+
+/* Inputs SGA */
+html.sga input::placeholder { color: rgba(13,31,16,0.30); }
+html.sga input  { color-scheme: light; }
+html.sga select { color-scheme: light; }
+
+/* Danger button SGA */
+html.sga .bg-danger\/10    { background-color: rgba(239,68,68,0.08) !important; }
+html.sga .border-danger\/30 { border-color: rgba(239,68,68,0.25) !important; }
 
 /* ── Base ─────────────────────────────────────────────────────────────────── */
 *, *::before, *::after {
@@ -65,6 +355,9 @@ body {
 /* ── Safe area ────────────────────────────────────────────────────────────── */
 .pb-safe {
   padding-bottom: env(safe-area-inset-bottom, 16px);
+}
+.pt-safe {
+  padding-top: max(env(safe-area-inset-top, 0px), 20px);
 }
 
 /* ── Scrollbar ────────────────────────────────────────────────────────────── */

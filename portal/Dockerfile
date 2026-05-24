@@ -15,6 +15,9 @@ WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
+# Copia public explicitamente para garantir arquivos estáticos (logo, icons, etc)
 COPY --from=builder /app/public ./public
+# Garante permissões corretas
+RUN chown -R node:node /app/public
 EXPOSE 3000
 CMD ["node", "server.js"]
