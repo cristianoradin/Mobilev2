@@ -16,8 +16,8 @@ export default defineConfig({
       filename: 'sw.ts',
       includeAssets: ['favicon.ico', 'icons/*.png'],
       manifest: {
-        name: 'SGA Petro — Dashboard',
-        short_name: 'SGA Petro',
+        name: 'Mobile SGA Petro',
+        short_name: 'Mobile SGA',
         description: 'Gestão inteligente do seu posto de combustível',
         theme_color: '#009c3b',
         background_color: '#0a0a0a',
