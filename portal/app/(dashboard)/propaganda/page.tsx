@@ -1,6 +1,5 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
-import Image from 'next/image'
 import { TopBar }         from '@/components/layout/TopBar'
 import { Card, CardBody } from '@/components/ui/Card'
 import { Button }         from '@/components/ui/Button'
@@ -15,16 +14,16 @@ import {
 interface Cliente { id: string; nome: string; ativo: boolean }
 
 interface PropagandaRow {
-  id:            string
-  titulo:        string
-  descricao:     string
-  imagem:        string | null
-  cliente_ids:   string[]
-  para_todos:    boolean
-  duracao_horas: number
-  ativa:         boolean
-  created_at:    string
-  expires_at:    string | null
+  id:           string
+  titulo:       string
+  descricao:    string
+  imagem:       string | null
+  clienteIds:   string[] | null
+  paraTodos:    boolean
+  duracaoHoras: number
+  ativa:        boolean
+  createdAt:    string
+  expiresAt:    string | null
 }
 
 const DURACOES = [
@@ -191,7 +190,7 @@ export default function PropagandaPage() {
   }
 
   function isExpired(p: PropagandaRow) {
-    return p.expires_at ? new Date(p.expires_at) < new Date() : false
+    return p.expiresAt ? new Date(p.expiresAt) < new Date() : false
   }
 
   const clienteNome = clienteId !== 'todos'
@@ -429,9 +428,9 @@ export default function PropagandaPage() {
                                 ? <Badge variant="success">Ativa</Badge>
                                 : <Badge variant="warning">Pausada</Badge>
                             }
-                            {p.para_todos
+                            {p.paraTodos
                               ? <Badge variant="info"><Globe size={9} className="mr-1" />Todos</Badge>
-                              : <Badge variant="default"><Users size={9} className="mr-1" />{p.cliente_ids.length} cliente(s)</Badge>
+                              : <Badge variant="default"><Users size={9} className="mr-1" />{(p.clienteIds ?? []).length} cliente(s)</Badge>
                             }
                           </div>
                           {p.descricao && (
@@ -440,11 +439,11 @@ export default function PropagandaPage() {
                           <div className="flex items-center gap-3 text-[10px] text-white/30 flex-wrap">
                             <span className="flex items-center gap-1">
                               <Clock size={9} />
-                              Criada: {fmtDate(p.created_at)}
+                              Criada: {fmtDate(p.createdAt)}
                             </span>
                             <span className="flex items-center gap-1">
                               <Clock size={9} />
-                              Expira: {fmtDate(p.expires_at)}
+                              Expira: {fmtDate(p.expiresAt)}
                             </span>
                           </div>
                         </div>
