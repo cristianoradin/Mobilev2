@@ -35,93 +35,96 @@ func NewUpdateHandler(pushSecret, currentVersion string, onApplied func(), log *
 	}
 }
 
-// Handle processa um MQTTCommand do tipo UPDATE_AGENT.
-// Os campos esperados em cmd.Payload:
-//
-//	"version" string  — versão nova (ex: "1.1.0")
-//	"url"     string  — URL pública para baixar o novo executável
-//	"sha256"  string  — hash SHA-256 hex esperado do binário
-//	"secret"  string  — deve ser igual ao PUSH_SECRET configurado no agente
-func (h *UpdateHandler) Handle(cmd *models.MQTTCommand) {
-	// ── 1. Extrai campos do payload ──────────────────────────────────────────
-	secret, _ := cmd.Payload["secret"].(string)
-	newVersion, _ := cmd.Payload["version"].(string)
-	downloadURL, _ := cmd.Payload["url"].(string)
-	expectedHash, _ := cmd.Payload["sha256"].(string)
+// CurrentVersion devolve a versão corrente em runtime — útil pro poller comparar.
+func (h *UpdateHandler) CurrentVersion() string { return h.version }
 
-	// ── 2. Autorização: verifica secret ─────────────────────────────────────
-	if h.pushSecret == "" || secret != h.pushSecret {
-		h.log.Warn("UPDATE_AGENT: secret inválido — comando ignorado")
-		return
-	}
-
+// ApplyUpdate baixa, verifica SHA256, aplica e dispara restart.
+// Pode ser chamado pelo MQTT handler (com secret check externo) OU pelo poller
+// (que é trigger interno confiável).
+// Retorna nil em sucesso; loga e retorna erro caso contrário.
+func (h *UpdateHandler) ApplyUpdate(newVersion, downloadURL, expectedHash string) error {
 	if downloadURL == "" || expectedHash == "" || newVersion == "" {
-		h.log.Warn("UPDATE_AGENT: campos obrigatórios ausentes (version, url, sha256)")
-		return
+		return fmt.Errorf("campos obrigatórios ausentes (version, url, sha256)")
 	}
 
-	h.log.Info("UPDATE_AGENT: iniciando atualização",
+	if newVersion == h.version {
+		h.log.Info("update ignorado — versão já é a corrente", zap.String("versao", newVersion))
+		return nil
+	}
+
+	h.log.Info("UPDATE: iniciando",
 		zap.String("versao_atual", h.version),
 		zap.String("versao_nova", newVersion),
 		zap.String("url", downloadURL),
 	)
 
-	// ── 3. Download ──────────────────────────────────────────────────────────
+	// ── Download ────────────────────────────────────────────────────────────
 	client := &http.Client{Timeout: 10 * time.Minute}
 	resp, err := client.Get(downloadURL)
 	if err != nil {
-		h.log.Error("UPDATE_AGENT: falha no download", zap.Error(err))
-		return
+		h.log.Error("UPDATE: falha no download", zap.Error(err))
+		return err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		h.log.Error("UPDATE_AGENT: download retornou status inesperado",
-			zap.Int("status", resp.StatusCode))
-		return
+		h.log.Error("UPDATE: download retornou status inesperado", zap.Int("status", resp.StatusCode))
+		return fmt.Errorf("download HTTP %d", resp.StatusCode)
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		h.log.Error("UPDATE_AGENT: erro lendo resposta do download", zap.Error(err))
-		return
+		h.log.Error("UPDATE: erro lendo resposta do download", zap.Error(err))
+		return err
 	}
 
-	h.log.Info("UPDATE_AGENT: download concluído", zap.Int("bytes", len(body)))
+	h.log.Info("UPDATE: download concluído", zap.Int("bytes", len(body)))
 
-	// ── 4. Verifica SHA256 ───────────────────────────────────────────────────
+	// ── Verifica SHA256 ─────────────────────────────────────────────────────
 	sum := sha256.Sum256(body)
 	got := hex.EncodeToString(sum[:])
 	if got != expectedHash {
-		h.log.Error("UPDATE_AGENT: SHA256 não confere — abortando",
+		h.log.Error("UPDATE: SHA256 não confere — abortando",
 			zap.String("esperado", expectedHash),
 			zap.String("recebido", got),
 		)
-		return
+		return fmt.Errorf("sha256 mismatch")
 	}
 
-	h.log.Info("UPDATE_AGENT: SHA256 verificado", zap.String("sha256", got))
+	h.log.Info("UPDATE: SHA256 verificado", zap.String("sha256", got))
 
-	// ── 5. Substituição atômica do binário ───────────────────────────────────
-	// go-update escreve o novo exe de forma atômica, lidando com o bloqueio
-	// de arquivo do Windows (move current→.old, escreve novo→current).
+	// ── Substituição atômica do binário ─────────────────────────────────────
+	// go-update lida com o bloqueio de arquivo do Windows (move current→.old, escreve novo).
 	if err := update.Apply(bytes.NewReader(body), update.Options{}); err != nil {
-		h.log.Error("UPDATE_AGENT: falha ao aplicar atualização", zap.Error(err))
-		// Tenta rollback se o go-update deixou o arquivo parcialmente escrito
+		h.log.Error("UPDATE: falha ao aplicar", zap.Error(err))
 		if rbErr := update.RollbackError(err); rbErr != nil {
-			h.log.Error("UPDATE_AGENT: rollback também falhou", zap.Error(rbErr))
+			h.log.Error("UPDATE: rollback também falhou", zap.Error(rbErr))
 		}
-		return
+		return err
 	}
 
-	h.log.Info("UPDATE_AGENT: binário substituído com sucesso — reiniciando serviço",
-		zap.String("versao_nova", newVersion),
-	)
+	h.log.Info("UPDATE: binário substituído — reiniciando serviço", zap.String("versao_nova", newVersion))
 
-	// ── 6. Dispara restart ───────────────────────────────────────────────────
 	if h.onApplied != nil {
 		h.onApplied()
 	}
+	return nil
+}
+
+// Handle processa um MQTTCommand do tipo UPDATE_AGENT.
+// Exige secret correto (rotas push), depois chama ApplyUpdate.
+func (h *UpdateHandler) Handle(cmd *models.MQTTCommand) {
+	secret, _      := cmd.Payload["secret"].(string)
+	newVersion, _  := cmd.Payload["version"].(string)
+	downloadURL, _ := cmd.Payload["url"].(string)
+	expectedHash, _ := cmd.Payload["sha256"].(string)
+
+	if h.pushSecret == "" || secret != h.pushSecret {
+		h.log.Warn("UPDATE_AGENT: secret inválido — comando ignorado")
+		return
+	}
+
+	_ = h.ApplyUpdate(newVersion, downloadURL, expectedHash)
 }
 
 // extractStr é um helper para ler string de map[string]interface{}

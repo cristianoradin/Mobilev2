@@ -63,6 +63,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function logout() {
+    // Revoga o token no servidor (incrementa token_version) — best-effort
+    if (session?.jwt) {
+      const portalUrl = import.meta.env.VITE_PORTAL_URL ?? ''
+      fetch(`${portalUrl}/api/auth/pwa-logout`, {
+        method:  'POST',
+        headers: { Authorization: `Bearer ${session.jwt}` },
+      }).catch(() => {/* ignora falha de rede — token expira em 8h */})
+    }
     const db = await getDB()
     await db.delete(DB_STORE, 'current')
     setSession(null)

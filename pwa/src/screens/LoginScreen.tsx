@@ -46,9 +46,9 @@ export function LoginScreen() {
       {/* Logo */}
       <div className="flex flex-col items-center gap-3 mb-10">
         <img
-          src="/logo.png"
+          src="/logo-vertical.png"
           alt="SGA Petro"
-          className="h-12 w-auto object-contain"
+          className="h-32 w-auto object-contain"
         />
         <p className="text-sm text-ink/50">Gestão inteligente do seu posto</p>
       </div>

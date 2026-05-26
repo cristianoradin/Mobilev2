@@ -3,8 +3,12 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { ArrowLeft, RefreshCw, Wifi, WifiOff, Clock } from 'lucide-react'
 import { useAuth } from '@/core/auth/AuthContext'
 import { useChartData } from '@/hooks/useChartData'
-import { TankWidget }    from '@/components/charts/TankWidget'
-import { DynamicChart }  from '@/components/charts/DynamicChart'
+import { TankWidget }       from '@/components/charts/TankWidget'
+import { DynamicChart }     from '@/components/charts/DynamicChart'
+import { ReportTable }      from '@/components/charts/ReportTable'
+import { MultiBlockChart }  from '@/components/charts/MultiBlockChart'
+import { DateRangeFilter }  from '@/components/ui/DateRangeFilter'
+import { ChartLoading }     from '@/components/ui/ChartLoading'
 import type { ChartMetadata } from '@/lib/contracts'
 
 // ─── Dispara push notification local via Service Worker ───────────────────────
@@ -73,7 +77,14 @@ export function GraficoDetailScreen() {
 
 // ─── View principal com dados ─────────────────────────────────────────────────
 function ChartView({ template, onBack }: { template: ChartMetadata; onBack: () => void }) {
-  const { data, loading, error, agentOnline, stale, lastUpdate, refresh } = useChartData(template)
+  // Filtro de data — só ativo se template.date_filter.enabled
+  const dateFilterActive = template.date_filter?.enabled === true
+  const [dateRange, setDateRange] = useState<{ from: string; to: string }>({ from: '', to: '' })
+
+  const { data, loading, error, agentOnline, stale, lastUpdate, refresh } = useChartData(
+    template,
+    dateFilterActive ? { dateFrom: dateRange.from, dateTo: dateRange.to } : {},
+  )
 
   // Guarda quais tanques já foram notificados nesta sessão (evita flood)
   const notifiedRef = useRef<Set<string>>(new Set())
@@ -163,11 +174,39 @@ function ChartView({ template, onBack }: { template: ChartMetadata; onBack: () =
         )}
       </div>
 
+      {/* Filtro de data (só quando template tem date_filter.enabled) */}
+      {dateFilterActive && template.date_filter && (
+        <div className="mb-3">
+          <DateRangeFilter
+            templateId={template.id}
+            filter={template.date_filter}
+            onChange={(from, to) => setDateRange({ from, to })}
+          />
+        </div>
+      )}
+
+      {/* Skeleton enquanto carrega — só na primeira vez (sem dados ainda) */}
+      {loading && !data && (
+        <ChartLoading variant={
+          template.chart_type === 'tank'       ? 'tank'       :
+          template.chart_type === 'report'     ? 'table'      :
+          template.chart_type === 'kpi'        ? 'kpi'        :
+          template.chart_type === 'multiblock' ? 'multiblock' :
+                                                 'chart'
+        } />
+      )}
+
       {/* Widget */}
-      {template.chart_type === 'tank' ? (
-        <TankWidget metadata={template} data={data} loading={loading} />
-      ) : (
-        <DynamicChart metadata={template} data={data ?? []} loading={loading} />
+      {(!loading || data) && (
+        template.chart_type === 'tank' ? (
+          <TankWidget metadata={template} data={data} loading={loading} />
+        ) : template.chart_type === 'report' ? (
+          <ReportTable metadata={template} data={data ?? []} loading={loading} />
+        ) : template.chart_type === 'multiblock' ? (
+          <MultiBlockChart metadata={template} data={data ?? []} loading={loading} />
+        ) : (
+          <DynamicChart metadata={template} data={data ?? []} loading={loading} />
+        )
       )}
     </div>
   )

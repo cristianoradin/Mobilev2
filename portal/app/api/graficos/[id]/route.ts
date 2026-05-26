@@ -10,7 +10,9 @@ import {
   updateGraficoSafe,
   deleteGraficoSafe,
 } from '@/lib/repositories/graficos'
-import { SYSTEM_TEMPLATES } from '@/lib/templates'
+import { SYSTEM_TEMPLATES }   from '@/lib/templates'
+import { writeAudit }          from '@/lib/audit'
+import { syncTemplateToAgents } from '@/lib/syncTemplate'
 
 export async function GET(
   _req: NextRequest,
@@ -24,7 +26,7 @@ export async function GET(
 }
 
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params
@@ -36,6 +38,7 @@ export async function DELETE(
 
   try {
     await deleteGraficoSafe(id)
+    void writeAudit(req, { acao: 'grafico.delete', recurso: id, status: 'ok' })
     return NextResponse.json({ ok: true })
   } catch (err) {
     console.error('[DELETE /api/graficos/[id]]', err)
@@ -57,11 +60,19 @@ export async function PUT(
     // Template do sistema → salva como novo registro no DB
     if (id.startsWith('tmpl-')) {
       const novo = await createGraficoSafe({ ...body, id: '' })
+      void writeAudit(req, { acao: 'grafico.create', recurso: body.nome, status: 'ok', payload: { from_system: id } })
+      // Novo template custom: sincroniza se já tiver liberação definida
+      if (novo.is_publico || (novo.cliente_ids ?? []).length > 0) {
+        void syncTemplateToAgents(novo, novo.is_publico, novo.cliente_ids ?? [])
+      }
       return NextResponse.json({ template: novo, created: true }, { status: 201 })
     }
 
     // Template do DB → atualiza
     const updated = await updateGraficoSafe(id, body)
+    void writeAudit(req, { acao: 'grafico.update', recurso: body.nome, status: 'ok' })
+    // Re-sincroniza template atualizado para todos os agentes que o têm liberado
+    void syncTemplateToAgents(updated, updated.is_publico, updated.cliente_ids ?? [])
     return NextResponse.json({ template: updated })
   } catch (err) {
     console.error('[PUT /api/graficos/[id]]', err)

@@ -44,14 +44,32 @@ export async function generateAgentJWT(cliente: Cliente): Promise<string> {
     .sign(DEV_SECRET)
 }
 
-export async function generateUserJWT(userId: string, role: string, clienteId: string, cnpj: string, empresas: number[]): Promise<string> {
-  return new SignJWT({
+export async function generateUserJWT(userId: string, role: string, clienteId: string, cnpj: string, empresas: number[], tokenVersion = 1): Promise<string> {
+  const privateKeyPem = process.env.JWT_PRIVATE_KEY
+
+  const payload = {
     client_id: clienteId,
     cnpj,
     role,
     empresas,
+    tv:   tokenVersion,   // token_version — para revogação
     type: 'user_token',
-  })
+  }
+
+  if (privateKeyPem) {
+    const normalizedKey = privateKeyPem.replace(/\\n/g, '\n')
+    const privateKey = await importPKCS8(normalizedKey, 'RS256')
+    return new SignJWT(payload)
+      .setProtectedHeader({ alg: 'RS256' })
+      .setSubject(userId)
+      .setIssuedAt()
+      .setExpirationTime('8h')
+      .setIssuer('sgapetro.cloud')
+      .sign(privateKey)
+  }
+
+  // Desenvolvimento: HS256 quando JWT_PRIVATE_KEY não está configurada
+  return new SignJWT(payload)
     .setProtectedHeader({ alg: 'HS256' })
     .setSubject(userId)
     .setIssuedAt()

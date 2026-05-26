@@ -59,12 +59,14 @@ func (h *ReadHandler) Handle(cmd *models.MQTTCommand) ([]byte, error) {
 	// Filtra empresas: apenas as que o usuário tem acesso
 	empresaIDs := cmd.EmpresasIDs
 
-	// Executa a query com CNPJ injection e gestão de cache
+	// Executa a query com CNPJ injection, filtro de empresa e período de datas
 	result, err := h.executor.ExecuteReadQuery(
 		cmd.TemplateID,
 		metadata.Nome,
 		metadata.Query.SQL,
 		empresaIDs,
+		cmd.DateFrom,
+		cmd.DateTo,
 		metadata.Query.TimeoutSeconds,
 		metadata.Query.RefreshSeconds/60,
 		cmd.ForceRefresh,

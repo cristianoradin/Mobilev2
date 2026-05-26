@@ -4,7 +4,7 @@ import Image          from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
 import {
   LayoutDashboard, Users, BarChart3, Key, FileText, Settings, LogOut,
-  PanelsTopLeft, Smartphone, Bell, Cpu, Megaphone, UserCog,
+  PanelsTopLeft, Smartphone, Bell, Cpu, Megaphone, UserCog, Activity, AlertTriangle, Shield,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 
@@ -17,9 +17,12 @@ const ALL_NAV = [
   { href: '/auditoria',   icon: FileText,        label: 'Auditoria',   key: 'auditoria'   },
   { href: '/comunicados', icon: Bell,            label: 'Comunicados', key: 'comunicados' },
   { href: '/propaganda',  icon: Megaphone,       label: 'Propaganda',  key: 'propaganda'  },
-  { href: '/agentes',     icon: Cpu,             label: 'Agentes',     key: 'agentes'     },
-  { href: '/pwa',         icon: Smartphone,      label: 'PWA',         key: 'pwa'         },
-  { href: '/usuarios',    icon: UserCog,         label: 'Usuários',    key: 'usuarios'    },
+  { href: '/agentes',        icon: Cpu,             label: 'Agentes',        key: 'agentes'        },
+  { href: '/pwa',            icon: Smartphone,      label: 'PWA',            key: 'pwa'            },
+  { href: '/usuarios',       icon: UserCog,         label: 'Usuários',       key: 'usuarios'       },
+  { href: '/observabilidade', icon: Activity,       label: 'Observabilidade', key: 'observabilidade' },
+  { href: '/alertas',         icon: AlertTriangle,  label: 'Alertas',         key: 'alertas'         },
+  { href: '/admins',          icon: Shield,         label: 'Admins',          key: 'admins'          },
 ]
 
 interface SidebarProps {
@@ -47,7 +50,7 @@ export function Sidebar({ menusPermitidos, isMaster }: SidebarProps) {
       {/* Logo */}
       <div className="px-6 py-5 border-b border-white/8">
         <Image
-          src="/logo.png"
+          src="/logo-horizontal.png"
           alt="SGA Petro"
           width={120}
           height={32}

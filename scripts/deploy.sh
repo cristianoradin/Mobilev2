@@ -23,12 +23,12 @@ echo "════════════════════════�
 echo "[1/5] Build da PWA..."
 cd "$PROJECT_ROOT/pwa"
 
-# Garante que VITE_API_URL aponte para o servidor de produção
-cat > .env.production <<'EOF'
-VITE_API_URL=https://cloud.gruposgapetro.com.br
-VITE_MQTT_URL=wss://cloud.gruposgapetro.com.br/mqtt
-VITE_VAPID_PUBLIC_KEY=BGUH45id0AJvVAAybgdoaYX-ZIk4x5eoD0tLN2BohlUH3xxecr80exE6UzoB8W0hL2GSCF4gHkYbNbgw_SoBU2w
-EOF
+# Usa o .env.production existente — NÃO sobrescreve
+if [ ! -f .env.production ]; then
+  echo "AVISO: pwa/.env.production não encontrado. Crie o arquivo antes de deployar."
+  exit 1
+fi
+echo "  Usando pwa/.env.production existente"
 
 npm run build
 echo "  PWA buildada em dist/ ✓"
@@ -53,6 +53,19 @@ rsync -avz \
   "$SERVER:$SGA_DIR/infra/"
 echo "  Infra sincronizada ✓"
 
+# ── 3b. Sync do portal (código-fonte Next.js) ────────────────────────────────
+echo "[3b/5] Enviando código do portal..."
+$SSH "$SERVER" "mkdir -p $SGA_DIR/portal"
+rsync -avz --delete \
+  -e "ssh -p $SSH_PORT -o StrictHostKeyChecking=no" \
+  --exclude='node_modules' \
+  --exclude='.next' \
+  --exclude='.env.local' \
+  --exclude='.env' \
+  "$PROJECT_ROOT/portal/" \
+  "$SERVER:$SGA_DIR/portal/"
+echo "  Portal sincronizado ✓"
+
 # ── 4. Build e start do portal (Docker) ──────────────────────────────────────
 echo "[4/5] Build e start do portal via Docker..."
 $SSH "$SERVER" bash <<REMOTE
@@ -73,8 +86,9 @@ $SSH "$SERVER" bash <<REMOTE
 
   echo "Aguardando portal ficar saudável..."
   for i in \$(seq 1 30); do
-    if curl -sf http://127.0.0.1:3001/api/health >/dev/null 2>&1; then
-      echo "Portal OK ✓"
+    STATUS=\$(curl -sf http://127.0.0.1:3001/api/health 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('status','?'))" 2>/dev/null || echo "")
+    if [ "\$STATUS" = "ok" ] || [ "\$STATUS" = "degraded" ]; then
+      echo "Portal OK (status=\$STATUS) ✓"
       break
     fi
     sleep 3
@@ -92,7 +106,8 @@ echo ""
 echo "════════════════════════════════════════════════════════"
 echo "  Deploy concluído!"
 echo ""
-echo "  PWA:    https://cloud.gruposgapetro.com.br"
-echo "  Portal: https://cloud.gruposgapetro.com.br:3001"
-echo "  EMQX:   http://cloud.gruposgapetro.com.br:18083"
+echo "  PWA:    https://mobilev2.gruposgapetro.com.br:4443"
+echo "  Portal: https://mobilev2.gruposgapetro.com.br:4444"
+echo "  Health: https://mobilev2.gruposgapetro.com.br:4444/api/health"
+echo "  EMQX:   http://localhost:18083 (via SSH tunnel)"
 echo "════════════════════════════════════════════════════════"

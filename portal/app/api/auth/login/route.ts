@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createSessionToken, SESSION_COOKIE, type AdminSession } from '@/lib/session'
 import { getDb } from '@/lib/db'
 import { verifyPassword } from '@/lib/repositories/usuarios'
+import { writeAudit }  from '@/lib/audit'
+import { rateLimit }   from '@/lib/rate-limit'
 
 // ── Menus disponíveis no portal ───────────────────────────────────────────────
 export const ALL_MENUS = [
@@ -21,6 +23,17 @@ export async function POST(req: NextRequest) {
 
     if (!email || !password) {
       return NextResponse.json({ error: 'Credenciais obrigatórias' }, { status: 400 })
+    }
+
+    // Rate limit: 10 tentativas / 15 min por IP
+    const ip = req.headers.get('x-forwarded-for')?.split(',')[0].trim() ?? 'unknown'
+    const rl = rateLimit(`portal-login:${ip}`, 10, 15 * 60_000)
+    if (!rl.ok) {
+      const retryAfter = Math.ceil(rl.retryAfterMs / 1000)
+      return NextResponse.json(
+        { error: 'Muitas tentativas. Aguarde antes de tentar novamente.' },
+        { status: 429, headers: { 'Retry-After': String(retryAfter) } },
+      )
     }
 
     let session: AdminSession | null = null
@@ -66,10 +79,23 @@ export async function POST(req: NextRequest) {
 
     if (!session) {
       await new Promise(r => setTimeout(r, 300)) // throttle brute-force
+      void writeAudit(req, {
+        acao:   'auth.login_failed',
+        recurso: email.toLowerCase().trim(),
+        status:  'warn',
+        payload: { tentativa_email: email.toLowerCase().trim() },
+      })
       return NextResponse.json({ error: 'Credenciais inválidas' }, { status: 401 })
     }
 
     const token = await createSessionToken(session)
+
+    void writeAudit(req, {
+      acao:   'auth.login',
+      recurso: session.email,
+      status:  'ok',
+      admin:  { email: session.email, nome: session.nome, id: session.id },
+    })
 
     const proto   = req.headers.get('x-forwarded-proto') ?? ''
     const isHttps = proto === 'https' || req.url.startsWith('https://')

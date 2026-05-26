@@ -5,7 +5,7 @@ export interface DateRange {
   from: Date | null
   to:   Date | null
 }
-export type ChartType = 'line' | 'bar' | 'pie' | 'gauge' | 'area' | 'report' | 'kpi' | 'heatmap' | 'waterfall' | 'button' | 'tank'
+export type ChartType = 'line' | 'bar' | 'pie' | 'gauge' | 'area' | 'report' | 'kpi' | 'heatmap' | 'waterfall' | 'button' | 'tank' | 'multiblock'
 
 // ── Tank Widget (Estoque de Tanques) ──────────────────────────────────────────
 export interface TankProductColor {
@@ -151,12 +151,15 @@ export interface Dashboard {
 export type DatePreset = 'today' | 'yesterday' | 'last_7d' | 'last_30d' | 'this_month' | 'last_month' | 'custom'
 
 export interface TemplateDateFilter {
-  enabled:       boolean
-  param_inicio:  string       // ex: ':data_inicio' — substitui no SQL
-  param_fim:     string       // ex: ':data_fim'
-  default_preset: DatePreset  // período padrão quando abrir o dashboard
-  default_from?: string       // ISO — usado quando preset === 'custom'
-  default_to?:   string       // ISO — usado quando preset === 'custom'
+  enabled:        boolean
+  /** 'date' → substitui :data_inicio/:data_fim (YYYY-MM-DD)
+   *  'datetime' → substitui :datetime_inicio/:datetime_fim (YYYY-MM-DD HH:MM:SS) */
+  filter_type:    'date' | 'datetime'
+  param_inicio:   string       // ex: ':data_inicio' ou ':datetime_inicio'
+  param_fim:      string       // ex: ':data_fim'    ou ':datetime_fim'
+  default_preset: DatePreset   // período padrão quando abrir o dashboard
+  default_from?:  string       // ISO — usado quando preset === 'custom'
+  default_to?:    string       // ISO — usado quando preset === 'custom'
 }
 
 export interface ChartMetadata {
@@ -180,15 +183,72 @@ export interface ChartMetadata {
     show_legend: boolean
     show_tooltip: boolean
     gradient?: boolean
+    // Ícone exibido nos cards de menu do PWA (lucide icon name)
+    icon?:       string
+    icon_color?: string   // ex: '#009c3b' (cor do stroke)
+    icon_bg?:    string   // ex: '#C5E8D6' (cor do quadrado de fundo)
   }
   permissions:    { min_role: UserRole }
   is_publico:     boolean
   cliente_ids?:   string[]
-  report_config?:  ReportConfig        // chart_type === 'report'
-  kpi_config?:     KpiConfig           // chart_type === 'kpi'
-  button_config?:  ButtonWidgetConfig  // chart_type === 'button'
-  tank_config?:    TankConfig          // chart_type === 'tank'
+  report_config?:    ReportConfig        // chart_type === 'report'
+  kpi_config?:       KpiConfig           // chart_type === 'kpi'
+  button_config?:    ButtonWidgetConfig  // chart_type === 'button'
+  tank_config?:      TankConfig          // chart_type === 'tank'
+  multiblock_config?: MultiblockConfig   // chart_type === 'multiblock'
   created_at?:    string
+}
+
+// ── Multiblock — 1 SQL renderiza N visualizações do mesmo dataset ────────────
+export type AggregateFn = 'sum' | 'avg' | 'min' | 'max' | 'count' | 'first' | 'last'
+
+export type KpiFormat = 'number' | 'currency' | 'percent' | 'litros' | 'text'
+
+export interface MbKpiBlock {
+  type:    'kpi'
+  title:   string
+  field:   string
+  agg:     AggregateFn
+  format:  KpiFormat
+  icon?:   string
+  color?:  string
+}
+
+export interface MbDonutBlock {
+  type:        'donut'
+  title:       string
+  groupBy:     string          // ex: 'produto'
+  valueField:  string          // ex: 'valor'
+  valueAgg?:   AggregateFn     // default 'sum'
+  topN?:       number          // limita ao top N (resto vira "Outros")
+  showLegend?: boolean
+}
+
+export interface MbTableBlock {
+  type:        'table'
+  title?:      string
+  columns:     ReportColumn[]   // reusa formato de report
+  showTotals?: boolean
+  maxRows?:    number
+}
+
+export interface MbBarBlock {
+  type:        'bar'
+  title:       string
+  xField:      string
+  yField:      string
+  yAgg?:       AggregateFn      // default 'sum'
+  orientation?: 'h' | 'v'
+}
+
+export type MultiBlock = MbKpiBlock | MbDonutBlock | MbTableBlock | MbBarBlock
+
+export interface MultiblockConfig {
+  blocks:  MultiBlock[]
+  layout?: {
+    /** Grid em colunas. Ex: 'kpis-row' = KPIs em linha no topo, demais empilhados */
+    preset?: 'kpis-top' | 'side-by-side' | 'stacked'
+  }
 }
 
 export interface Licenca {

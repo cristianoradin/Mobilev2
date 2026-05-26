@@ -1,26 +1,32 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"time"
 
 	"github.com/kardianos/service"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"gopkg.in/natefinch/lumberjack.v2"
 
 	"github.com/sga-petro/agent/internal/auth"
 	"github.com/sga-petro/agent/internal/commands"
 	"github.com/sga-petro/agent/internal/config"
 	"github.com/sga-petro/agent/internal/database"
 	"github.com/sga-petro/agent/internal/discount"
+	"github.com/sga-petro/agent/internal/discover"
 	"github.com/sga-petro/agent/internal/httpserver"
 	"github.com/sga-petro/agent/internal/mqtt"
 	"github.com/sga-petro/agent/internal/query"
 	"github.com/sga-petro/agent/internal/setup"
+	"github.com/sga-petro/agent/internal/updater"
+	"github.com/sga-petro/agent/internal/watchdog"
 )
 
 // svcRef é um singleton para que o UpdateHandler possa reiniciar o serviço
@@ -45,7 +51,7 @@ func resolvePath(p string) string {
 	return filepath.Join(exeDir(), p)
 }
 
-const version = "1.0.0"
+const version = "1.2.1"
 
 // program implementa service.Interface para rodar como Windows Service / Systemd
 type program struct {
@@ -55,10 +61,25 @@ type program struct {
 	pg         *database.PostgresDB
 	cache      *database.CacheDB
 	log        *zap.Logger
+	wd         *watchdog.Watchdog
+	cancel     context.CancelFunc
 }
 
 func (p *program) Start(s service.Service) error {
 	p.log.Info("SGA Petro Agent iniciando", zap.String("version", version))
+
+	// 0. Panic recovery global — captura panic em qualquer goroutine raiz
+	//    e loga stacktrace antes de morrer. O service manager reinicia em seguida.
+	defer func() {
+		if r := recover(); r != nil {
+			p.log.Error("PANIC no Start",
+				zap.Any("recover", r),
+				zap.String("stack", string(debug.Stack())),
+			)
+			_ = p.log.Sync()
+			os.Exit(2)
+		}
+	}()
 
 	// 1. Valida JWT do agente — falha hard se inválido ou expirado
 	validator, err := auth.NewValidator()
@@ -98,7 +119,7 @@ func (p *program) Start(s service.Service) error {
 	p.pg = pg
 
 	// 4. Monta os handlers de comando
-	executor := query.NewExecutor(pg, cache, agentClaims.CNPJ)
+	executor := query.NewExecutorWithLogger(pg, cache, agentClaims.CNPJ, p.log)
 	readHandler  := commands.NewReadHandler(executor, cache, validator, p.log)
 	writeHandler := commands.NewWriteHandler(pg, cache, validator, agentClaims.CNPJ, p.log)
 
@@ -125,8 +146,23 @@ func (p *program) Start(s service.Service) error {
 	)
 
 	// 5. Conecta ao MQTT e começa a escutar comandos
+	// Credenciais padrão: username = CNPJ limpo, password = JWT do agente.
+	// Isso permite que o EMQX valide via JWT (RS256) e aplique ACL por CNPJ.
+	// Agentes antigos (config.json sem username/password) são migrados automaticamente.
+	mqttCfg := p.cfg.MQTT
+	if mqttCfg.Username == "" {
+		mqttCfg.Username = strings.NewReplacer(".", "", "/", "", "-", "").Replace(agentClaims.CNPJ)
+	}
+	if mqttCfg.Password == "" {
+		mqttCfg.Password = p.cfg.JWTToken
+	}
+
 	agentClient := mqtt.NewAgentClient(
-		p.cfg.MQTT,
+		mqttCfg,
+		p.cfg.Portal,
+		p.cfg.AgentID,
+		p.cfg.JWTToken,
+		version,
 		agentClaims.CNPJ,
 		readHandler,
 		writeHandler,
@@ -136,7 +172,9 @@ func (p *program) Start(s service.Service) error {
 	)
 
 	if err := agentClient.Connect(); err != nil {
-		return fmt.Errorf("conectando ao MQTT: %w", err)
+		// MQTT falhou — modo degraded: inicia heartbeat REST para ao menos aparecer no portal
+		p.log.Warn("MQTT não conectou — modo degraded (só REST)", zap.Error(err))
+		agentClient.StartDegradedHeartbeat()
 	}
 	p.agent = agentClient
 
@@ -153,7 +191,23 @@ func (p *program) Start(s service.Service) error {
 		p.log,
 	)
 
-	httpSrv := httpserver.New(p.cfg.HTTP.Port, descontoSvc, p.log)
+	// 7. Watchdog — detecta travamentos vivos (deadlock, goroutine bloqueada).
+	//    Beat() é chamado pelo heartbeat do MQTT e por um ticker próprio.
+	ctx, cancel := context.WithCancel(context.Background())
+	p.cancel = cancel
+	if p.cfg.Watchdog.Enabled {
+		p.wd = watchdog.New(time.Duration(p.cfg.Watchdog.TimeoutMinutes)*time.Minute, p.log)
+		p.wd.Start(ctx)
+		// Beat periódico independente do MQTT — garante que mesmo se MQTT travar,
+		// o watchdog só dispara quando outras goroutines também travarem.
+		// O loop principal do MQTT também chama Beat() em seu heartbeat.
+		agentClient.SetWatchdog(p.wd)
+	}
+
+	// 8. HTTP local (PDV) — expõe /healthz com estado do watchdog
+	var probe httpserver.LivenessProbe
+	if p.wd != nil { probe = p.wd }
+	httpSrv := httpserver.New(p.cfg.HTTP.Port, descontoSvc, probe, version, p.log)
 	if err := httpSrv.Start(); err != nil {
 		// Não falha hard — o agente continua funcionando sem o HTTP local
 		p.log.Warn("servidor HTTP local não iniciado", zap.Error(err))
@@ -161,16 +215,47 @@ func (p *program) Start(s service.Service) error {
 		p.httpServer = httpSrv
 	}
 
-	// 7. Agenda vacuum periódico do SQLite
+	// 9. Poller de updates — verifica /agent/latest.json periodicamente
+	if p.cfg.Update.Enabled {
+		poller := updater.New(
+			p.cfg.Portal.URL,
+			updateHandler,
+			time.Duration(p.cfg.Update.PollIntervalMinutes)*time.Minute,
+			p.log,
+		)
+		poller.Start(ctx)
+	}
+
+	// 9b. Discoverer — descobre empresas no banco local + reporta ao portal.
+	//     Roda 30s após boot e a cada 6h. Disparável on-demand via MQTT command.
+	disc := discover.New(pg, p.cfg.Portal, p.cfg.AgentID, p.cfg.JWTToken, p.log)
+	disc.Start(ctx)
+	agentClient.SetDiscoverer(disc)
+
+	// 10. Agenda vacuum periódico do SQLite
 	go func() {
-		ticker := time.NewTicker(time.Duration(p.cfg.Cache.VacuumIntervalHours) * time.Hour)
+		defer func() {
+			if r := recover(); r != nil {
+				p.log.Error("PANIC no vacuum loop",
+					zap.Any("recover", r),
+					zap.String("stack", string(debug.Stack())),
+				)
+			}
+		}()
+		interval := time.Duration(p.cfg.Cache.VacuumIntervalHours) * time.Hour
 		if p.cfg.Cache.VacuumIntervalHours == 0 {
-			ticker = time.NewTicker(24 * time.Hour)
+			interval = 24 * time.Hour
 		}
+		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
-		for range ticker.C {
-			if err := cache.Vacuum(); err != nil {
-				p.log.Error("erro no vacuum", zap.Error(err))
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if err := cache.Vacuum(); err != nil {
+					p.log.Error("erro no vacuum", zap.Error(err))
+				}
 			}
 		}
 	}()
@@ -179,6 +264,8 @@ func (p *program) Start(s service.Service) error {
 		zap.String("cnpj", agentClaims.CNPJ),
 		zap.String("broker", p.cfg.MQTT.Broker),
 		zap.Int("http_port", p.cfg.HTTP.Port),
+		zap.Bool("watchdog", p.cfg.Watchdog.Enabled),
+		zap.Bool("update_poller", p.cfg.Update.Enabled),
 	)
 
 	return nil
@@ -187,6 +274,9 @@ func (p *program) Start(s service.Service) error {
 func (p *program) Stop(_ service.Service) error {
 	p.log.Info("SGA Petro Agent encerrando...")
 
+	if p.cancel != nil {
+		p.cancel()
+	}
 	if p.httpServer != nil {
 		p.httpServer.Shutdown()
 	}
@@ -244,7 +334,7 @@ func main() {
 	cfg.Log.Path   = resolvePath(cfg.Log.Path)
 	cfg.Cache.Path = resolvePath(cfg.Cache.Path)
 
-	logger := buildLogger(cfg.Log.Level, cfg.Log.Path)
+	logger := buildLogger(cfg.Log)
 	defer logger.Sync() //nolint:errcheck
 
 	svcConfig := &service.Config{
@@ -286,9 +376,9 @@ func main() {
 	}
 }
 
-func buildLogger(level, logPath string) *zap.Logger {
+func buildLogger(cfgLog config.LogConfig) *zap.Logger {
 	lvl := zapcore.InfoLevel
-	switch level {
+	switch cfgLog.Level {
 	case "debug":
 		lvl = zapcore.DebugLevel
 	case "warn":
@@ -297,27 +387,33 @@ func buildLogger(level, logPath string) *zap.Logger {
 		lvl = zapcore.ErrorLevel
 	}
 
-	cfg := zap.Config{
-		Level:       zap.NewAtomicLevelAt(lvl),
-		Development: false,
-		Encoding:    "json",
-		EncoderConfig: zapcore.EncoderConfig{
-			TimeKey:        "ts",
-			LevelKey:       "level",
-			MessageKey:     "msg",
-			CallerKey:      "caller",
-			EncodeLevel:    zapcore.LowercaseLevelEncoder,
-			EncodeTime:     zapcore.ISO8601TimeEncoder,
-			EncodeCaller:   zapcore.ShortCallerEncoder,
-			EncodeDuration: zapcore.StringDurationEncoder,
-		},
-		OutputPaths:      []string{"stdout", logPath},
-		ErrorOutputPaths: []string{"stderr"},
+	encCfg := zapcore.EncoderConfig{
+		TimeKey:        "ts",
+		LevelKey:       "level",
+		MessageKey:     "msg",
+		CallerKey:      "caller",
+		EncodeLevel:    zapcore.LowercaseLevelEncoder,
+		EncodeTime:     zapcore.ISO8601TimeEncoder,
+		EncodeCaller:   zapcore.ShortCallerEncoder,
+		EncodeDuration: zapcore.StringDurationEncoder,
 	}
+	encoder := zapcore.NewJSONEncoder(encCfg)
 
-	logger, err := cfg.Build()
-	if err != nil {
-		log.Fatalf("criando logger: %v", err)
-	}
-	return logger
+	// File output via lumberjack (rotação automática)
+	fileWriter := zapcore.AddSync(&lumberjack.Logger{
+		Filename:   cfgLog.Path,
+		MaxSize:    cfgLog.MaxSizeMB,
+		MaxBackups: cfgLog.MaxBackups,
+		MaxAge:     30,    // dias — limita backups antigos
+		Compress:   true,  // gzip nos rotacionados
+	})
+
+	stdoutWriter := zapcore.AddSync(os.Stdout)
+
+	core := zapcore.NewTee(
+		zapcore.NewCore(encoder, fileWriter,   lvl),
+		zapcore.NewCore(encoder, stdoutWriter, lvl),
+	)
+
+	return zap.New(core, zap.AddCaller(), zap.ErrorOutput(zapcore.AddSync(os.Stderr)))
 }

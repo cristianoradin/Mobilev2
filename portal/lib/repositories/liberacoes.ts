@@ -119,6 +119,29 @@ export interface DashboardDB {
   createdAt:  string
 }
 
+/** Normaliza o campo widgets — garante que sempre retorna um array,
+ *  mesmo quando o banco gravou uma string JSON (bug legado de JSON.stringify duplo). */
+function parseWidgets(raw: unknown): DashboardDB['widgets'] {
+  if (Array.isArray(raw)) return raw as DashboardDB['widgets']
+  if (typeof raw === 'string') {
+    try { return JSON.parse(raw) } catch { return [] }
+  }
+  return []
+}
+
+function rowToDash(r: Record<string, unknown>): DashboardDB {
+  return {
+    id:         String(r.id),
+    nome:       String(r.nome),
+    descricao:  r.descricao  ? String(r.descricao) : null,
+    cor:        String(r.cor ?? '#009c3b'),
+    widgets:    parseWidgets(r.widgets),
+    isPublico:  Boolean(r.isPublico),
+    clienteIds: (r.clienteIds as string[]) ?? [],
+    createdAt:  String(r.createdAt ?? ''),
+  }
+}
+
 export async function listDashboardsDB(): Promise<DashboardDB[]> {
   const sql = getDb()
   const rows = await sql`
@@ -126,19 +149,20 @@ export async function listDashboardsDB(): Promise<DashboardDB[]> {
     FROM dashboards
     ORDER BY created_at DESC
   `
-  return rows as unknown as DashboardDB[]
+  return rows.map(r => rowToDash(r as Record<string, unknown>))
 }
 
 export async function createDashboardDB(
   d: Pick<DashboardDB, 'nome' | 'descricao' | 'cor' | 'widgets'>,
 ): Promise<DashboardDB> {
   const sql = getDb()
+  // Usa ::jsonb para garantir que o array é armazenado como JSONB, não como string
   const [row] = await sql`
     INSERT INTO dashboards (nome, descricao, cor, widgets)
-    VALUES (${d.nome}, ${d.descricao ?? null}, ${d.cor}, ${JSON.stringify(d.widgets)})
+    VALUES (${d.nome}, ${d.descricao ?? null}, ${d.cor}, ${JSON.stringify(d.widgets)}::jsonb)
     RETURNING id, nome, descricao, cor, widgets, is_publico, cliente_ids, created_at
   `
-  return row as unknown as DashboardDB
+  return rowToDash(row as Record<string, unknown>)
 }
 
 export async function setDashboardLiberacao(
@@ -169,5 +193,5 @@ export async function getDashboardsForCliente(clienteId: string): Promise<Dashbo
        OR ${clienteId}::uuid = ANY(cliente_ids)
     ORDER BY created_at DESC
   `
-  return rows as unknown as DashboardDB[]
+  return rows.map(r => rowToDash(r as Record<string, unknown>))
 }

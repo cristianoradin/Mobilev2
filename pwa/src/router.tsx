@@ -15,6 +15,7 @@ import { GraficoDetailScreen }  from '@/screens/GraficoDetailScreen'
 import { DashboardsScreen }     from '@/screens/DashboardsScreen'
 import { NotificacoesScreen }  from '@/screens/NotificacoesScreen'
 import { AparenciaScreen }     from '@/screens/AparenciaScreen'
+import { MenuCategoriaScreen } from '@/screens/MenuCategoriaScreen'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { session, isLoading } = useAuth()
@@ -45,8 +46,14 @@ const router = createBrowserRouter([
     ),
     children: [
       { index: true,        element: <HomeScreen />         },
-      { path: 'vendas',     element: <VendasScreen />       },
-      { path: 'estoque',    element: <EstoqueScreen />      },
+      { path: 'pista',      element: <MenuCategoriaScreen categoria="pista" />      },
+      { path: 'estoque',    element: <MenuCategoriaScreen categoria="estoque" />    },
+      { path: 'vendas',     element: <MenuCategoriaScreen categoria="vendas" />     },
+      { path: 'financeiro', element: <MenuCategoriaScreen categoria="financeiro" /> },
+      { path: 'operacoes',  element: <MenuCategoriaScreen categoria="operacoes" />  },
+      // Legacy mantidas acessíveis em path alternativo
+      { path: 'estoque-legacy', element: <EstoqueScreen />      },
+      { path: 'vendas-legacy',  element: <VendasScreen />       },
       { path: 'preco',      element: <TrocaPrecoScreen />   },
       { path: 'auth',       element: <AutorizacoesScreen /> },
       { path: 'config',                  element: <ConfigScreen />         },

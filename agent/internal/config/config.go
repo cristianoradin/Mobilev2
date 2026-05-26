@@ -50,6 +50,18 @@ type HTTPConfig struct {
 	Port int `json:"port"` // padrão: 8765
 }
 
+// UpdateConfig configura o poller automático de atualizações
+type UpdateConfig struct {
+	PollIntervalMinutes int  `json:"poll_interval_minutes"` // 0 = desativado, default 30
+	Enabled             bool `json:"enabled"`               // default true
+}
+
+// WatchdogConfig configura o detector de travamentos
+type WatchdogConfig struct {
+	TimeoutMinutes int  `json:"timeout_minutes"` // default 5
+	Enabled        bool `json:"enabled"`         // default true
+}
+
 type Config struct {
 	AgentID     string         `json:"agent_id"`
 	ClienteCNPJ string         `json:"cliente_cnpj"`
@@ -60,6 +72,8 @@ type Config struct {
 	Log         LogConfig      `json:"log"`
 	Portal      PortalConfig   `json:"portal"`
 	HTTP        HTTPConfig     `json:"http"`
+	Update      UpdateConfig   `json:"update"`
+	Watchdog    WatchdogConfig `json:"watchdog"`
 }
 
 func Load(path string) (*Config, error) {
@@ -142,7 +156,31 @@ func setDefaults(cfg *Config) {
 	if cfg.HTTP.Port == 0 {
 		cfg.HTTP.Port = 8765
 	}
+	if cfg.Log.MaxSizeMB == 0 {
+		cfg.Log.MaxSizeMB = 20    // 20MB por arquivo
+	}
+	if cfg.Log.MaxBackups == 0 {
+		cfg.Log.MaxBackups = 5    // mantém últimos 5
+	}
+	// Update poller: opt-out, não opt-in (default ativado).
+	// JSON nativo não distingue "false explícito" de "campo ausente" para bool,
+	// então usamos PollIntervalMinutes==0 como sinal de "usar default".
+	if cfg.Update.PollIntervalMinutes == 0 && !cfg.Update.disabledExplicit() {
+		cfg.Update.PollIntervalMinutes = 30
+		cfg.Update.Enabled = true
+	}
+	if cfg.Watchdog.TimeoutMinutes == 0 && !cfg.Watchdog.disabledExplicit() {
+		cfg.Watchdog.TimeoutMinutes = 5
+		cfg.Watchdog.Enabled = true
+	}
 }
+
+// disabledExplicit retorna true se o usuário declarou Enabled=false no JSON.
+// Workaround: não há jeito de distinguir "campo ausente" de "false" com bool nativo,
+// então tratamos como "se tudo zero/false → defaults aplicam (ligado)". Para desativar,
+// definir explicitamente PollIntervalMinutes=-1 (poller) ou TimeoutMinutes=-1 (watchdog).
+func (u UpdateConfig) disabledExplicit() bool   { return u.PollIntervalMinutes < 0 }
+func (w WatchdogConfig) disabledExplicit() bool { return w.TimeoutMinutes < 0 }
 
 func validate(cfg *Config) error {
 	if cfg.JWTToken == "" {

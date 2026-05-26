@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { generateUserJWT } from '@/lib/jwt'
 import { findUsuarioByEmailGlobal, updateUltimoLogin, verifyPassword } from '@/lib/repositories/usuarios'
 import { findClienteSafe } from '@/lib/repositories/clientes'
+import { rateLimit }       from '@/lib/rate-limit'
 
 export async function POST(req: NextRequest) {
   try {
@@ -10,11 +11,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'E-mail e senha obrigatórios' }, { status: 400 })
     }
 
+    // Rate limit: 8 tentativas / 15 min por IP + 5 por email
+    const ip      = req.headers.get('x-forwarded-for')?.split(',')[0].trim() ?? 'unknown'
+    const rlIp    = rateLimit(`pwa-login:ip:${ip}`,               8,  15 * 60_000)
+    const rlEmail = rateLimit(`pwa-login:email:${email.toLowerCase()}`, 5, 15 * 60_000)
+
+    if (!rlIp.ok || !rlEmail.ok) {
+      const retryAfter = Math.ceil(Math.max(rlIp.retryAfterMs, rlEmail.retryAfterMs) / 1000)
+      return NextResponse.json(
+        { error: 'Muitas tentativas. Aguarde antes de tentar novamente.' },
+        { status: 429, headers: { 'Retry-After': String(retryAfter) } },
+      )
+    }
+
     // Busca usuário no banco
     const user = await findUsuarioByEmailGlobal(email)
 
     if (!user || !verifyPassword(senha, user.senhaHash)) {
-      await new Promise(r => setTimeout(r, 300)) // throttle brute-force
+      await new Promise(r => setTimeout(r, 300)) // throttle adicional
       return NextResponse.json({ error: 'Credenciais inválidas' }, { status: 401 })
     }
 
@@ -34,8 +48,14 @@ export async function POST(req: NextRequest) {
       ? todasEmpresas
       : todasEmpresas.filter(e => user.empresaIds.includes(e.id))
 
-    const empresaIds = empresasDoUser.map(e => e.id)
-    const jwt = await generateUserJWT(user.id, user.role, user.clienteId, cliente.cnpj, empresaIds)
+    // Usa codigo_erp (ID local do ERP) quando disponível, senão o ID do portal
+    // postgres.js com transform.camel transforma codigo_erp → codigoErp nos JSONB retornados
+    // O agente Go usa este ID para filtrar: WHERE vdaempresa IN (:empresas_filtradas)
+    const empresaIds = empresasDoUser.map(e => {
+      const emp = e as { id: number; codigoErp?: number; codigo_erp?: number }
+      return emp.codigoErp ?? emp.codigo_erp ?? emp.id
+    })
+    const jwt = await generateUserJWT(user.id, user.role, user.clienteId, cliente.cnpj, empresaIds, user.tokenVersion ?? 1)
 
     return NextResponse.json({
       id:         user.id,

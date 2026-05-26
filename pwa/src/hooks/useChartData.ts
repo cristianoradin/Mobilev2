@@ -24,10 +24,18 @@ export interface ChartDataState {
   refresh:     (force?: boolean) => void
 }
 
-export function useChartData(metadata: ChartMetadata): ChartDataState {
-  const { publish, subscribe, cnpjPrefix, connected } = useMQTT()
+interface UseChartDataOpts {
+  /** YYYY-MM-DD — substitui :data_inicio no SQL via agente */
+  dateFrom?: string
+  /** YYYY-MM-DD */
+  dateTo?:   string
+}
+
+export function useChartData(metadata: ChartMetadata, opts: UseChartDataOpts = {}): ChartDataState {
+  const { publish, subscribe, cnpjPrefix, connected, agentOnline } = useMQTT()
   const { session }     = useAuth()
   const { empresasIds } = useEmpresa()
+  const { dateFrom, dateTo } = opts
 
   const [data,       setData]       = useState<Record<string, unknown>[] | null>(null)
   const [loading,    setLoading]    = useState(true)
@@ -35,19 +43,8 @@ export function useChartData(metadata: ChartMetadata): ChartDataState {
   const [cached,     setCached]     = useState(false)
   const [stale,      setStale]      = useState(false)
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null)
-  const [agentOnline, setAgentOnline] = useState(false)
 
-  // Monitora status do agente
-  useEffect(() => {
-    if (!cnpjPrefix) return
-    const unsub = subscribe(`${cnpjPrefix}/status`, (raw) => {
-      try {
-        const msg = JSON.parse(raw) as { status: string }
-        setAgentOnline(msg.status === 'online')
-      } catch { /* ignora */ }
-    })
-    return unsub
-  }, [cnpjPrefix, subscribe])
+  // agentOnline vem do MQTTContext global (retained message do agente)
 
   const fetch = useCallback((forceRefresh = false) => {
     if (!session || !cnpjPrefix || !connected) {
@@ -71,8 +68,9 @@ export function useChartData(metadata: ChartMetadata): ChartDataState {
         done = true
         unsub()
 
-        if (res.status === 'success' && res.data) {
-          setData(res.data)
+        if (res.status === 'success') {
+          // data pode ser null quando a query retorna 0 linhas — normaliza para []
+          setData(res.data ?? [])
           setCached(res.cached ?? false)
           setStale(false)
           setLastUpdate(new Date())
@@ -97,6 +95,8 @@ export function useChartData(metadata: ChartMetadata): ChartDataState {
       empresas_ids:  empresasIds,
       force_refresh: forceRefresh,
       timestamp:     Date.now(),
+      ...(dateFrom ? { date_from: dateFrom } : {}),
+      ...(dateTo   ? { date_to:   dateTo   } : {}),
     }))
 
     // Timeout: serve dados stale se existirem, senão mostra erro
@@ -114,7 +114,7 @@ export function useChartData(metadata: ChartMetadata): ChartDataState {
 
     return () => { clearTimeout(timer); unsub() }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [metadata.id, empresasIds, session, cnpjPrefix, connected, publish, subscribe])
+  }, [metadata.id, empresasIds, session, cnpjPrefix, connected, publish, subscribe, dateFrom, dateTo])
 
   // Busca inicial
   useEffect(() => {

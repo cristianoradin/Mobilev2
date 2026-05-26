@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { verifySessionToken, SESSION_COOKIE } from '@/lib/session'
 
 // /agent/ — binários do agente servidos sem autenticação para download pelo agente no posto
-const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/auth/logout', '/agent/']
+// /sw.js   — service worker do portal (Web Push); precisa ser público para o browser registrar
+const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/auth/logout', '/agent/', '/sw.js']
 
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl

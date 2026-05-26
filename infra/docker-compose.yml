@@ -33,18 +33,33 @@ services:
       EMQX_NODE__COOKIE:  ${EMQX_COOKIE}
       EMQX_DASHBOARD__DEFAULT_USERNAME: ${EMQX_ADMIN_USER:-admin}
       EMQX_DASHBOARD__DEFAULT_PASSWORD: ${EMQX_ADMIN_PASS}
-      # Permite conexões sem auth (configurar JWT via Dashboard depois)
+
+      # ── API Key bootstrap (para a Observabilidade chamar /api/v5/stats) ─────
+      EMQX_API_KEY__BOOTSTRAP_FILE: /opt/emqx/etc/api_keys.txt
+
+      # ── Autenticação ────────────────────────────────────────────────────────
+      # Fase 1 (migração): anonymous ainda permitido enquanto agentes atualizam.
+      # Após todos os agentes validados com JWT, mude para "false".
       EMQX_ALLOW_ANONYMOUS: "true"
-      # Habilita apenas file authorization (sem ACL file por enquanto)
+
+      # Autenticação configurada via conf load após startup
+      # (ver infra/emqx/auth.hocon + deploy-portal.sh)
+
+      # ── Autorização (ACL) ────────────────────────────────────────────────────
+      # Durante migração: allow (não quebra clientes sem credenciais ainda)
+      # Após migração completa: mude para deny
       EMQX_AUTHORIZATION__NO_MATCH: allow
-      EMQX_AUTHORIZATION__DENY_ACTION: ignore
+      EMQX_AUTHORIZATION__DENY_ACTION: disconnect
     volumes:
       - emqx_data:/opt/emqx/data
+      - ./emqx/api_keys.txt:/opt/emqx/etc/api_keys.txt:ro
+      - ./emqx/acl.conf:/opt/emqx/etc/acl.conf:ro
+      - ./emqx/emqx.conf:/opt/emqx/etc/emqx.conf:ro
     ports:
-      - "1883:1883"    # MQTT TCP (agente local → cloud)
-      - "8083:8083"    # MQTT WebSocket (PWA → broker)
-      - "8883:8883"    # MQTT/TLS (opcional)
-      - "18083:18083"  # EMQX Dashboard (127.0.0.1 only abaixo)
+      - "1883:1883"            # MQTT TCP (agentes)
+      - "8083:8083"            # MQTT WebSocket (PWA)
+      - "8883:8883"            # MQTT/TLS (opcional)
+      - "127.0.0.1:18083:18083"  # EMQX Dashboard — só localhost
     healthcheck:
       test: ["CMD", "emqx", "ping"]
       interval: 15s
@@ -71,6 +86,15 @@ services:
       ADMIN_EMAIL:       ${ADMIN_EMAIL}
       ADMIN_PASSWORD:    ${ADMIN_PASSWORD}
       ADMIN_NOME:        ${ADMIN_NOME:-Admin SGA}
+      MQTT_BROKER:            ${MQTT_BROKER:-mqtt://cloud.gruposgapetro.com.br:1883}
+      MQTT_BROKER_INTERNAL:   mqtt://emqx:1883
+      MQTT_PORTAL_PASS:       ${MQTT_PORTAL_PASS}
+      NEXT_PUBLIC_BASE_URL:   ${NEXT_PUBLIC_BASE_URL:-https://mobilev2.gruposgapetro.com.br:4444}
+      ALERTS_CHECK_TOKEN:     ${ALERTS_CHECK_TOKEN}
+      EMQX_API_KEY:           ${EMQX_API_KEY}
+      EMQX_API_SECRET:        ${EMQX_API_SECRET}
+    volumes:
+      - portal_agent_files:/app/public/agent   # persiste binários do agente entre deploys
     ports:
       - "127.0.0.1:3001:3000"   # Next.js escuta na 3000 internamente → host:3001
     depends_on:
@@ -82,3 +106,4 @@ services:
 volumes:
   postgres_data:
   emqx_data:
+  portal_agent_files:

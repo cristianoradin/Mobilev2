@@ -10,21 +10,26 @@ export async function GET() {
     const sql = getDb()
 
     // ── KPIs ──────────────────────────────────────────────────────────────────
+    // status="online" derivado de heartbeat < 3min — a coluna `status` no DB
+    // mente após o agente cair (último valor publicado fica eternamente "online").
     const [kpiRows] = await sql`
       SELECT
-        (SELECT COUNT(*)::int FROM clientes WHERE ativo = true)                             AS clientes_ativos,
-        (SELECT COUNT(*)::int FROM graficos)                                                AS graficos_total,
-        (SELECT COUNT(*)::int FROM agentes WHERE status = 'online')                        AS agentes_online,
-        (SELECT COUNT(*)::int FROM agentes)                                                 AS agentes_total,
+        (SELECT COUNT(*)::int FROM clientes WHERE ativo = true)                                          AS clientes_ativos,
+        (SELECT COUNT(*)::int FROM graficos)                                                             AS graficos_total,
+        (SELECT COUNT(*)::int FROM agentes WHERE ultimo_heartbeat > NOW() - INTERVAL '3 minutes')        AS agentes_online,
+        (SELECT COUNT(*)::int FROM agentes)                                                              AS agentes_total,
         (SELECT COUNT(*)::int FROM licencas WHERE ativa = true
-          AND (data_expiracao IS NULL OR data_expiracao > NOW()))                           AS licencas_ativas
+          AND (data_expiracao IS NULL OR data_expiracao > NOW()))                                        AS licencas_ativas
     `
 
     // ── Status dos agentes (com nome do cliente) ──────────────────────────────
     const agentes = await sql`
       SELECT
         a.id,
-        a.status,
+        CASE
+          WHEN a.ultimo_heartbeat > NOW() - INTERVAL '3 minutes' THEN 'online'
+          ELSE 'offline'
+        END                          AS status,
         a.ultimo_heartbeat,
         a.versao,
         c.nome  AS cliente_nome,
@@ -32,7 +37,7 @@ export async function GET() {
       FROM agentes a
       JOIN clientes c ON c.id = a.cliente_id
       ORDER BY
-        CASE a.status WHEN 'online' THEN 0 ELSE 1 END,
+        CASE WHEN a.ultimo_heartbeat > NOW() - INTERVAL '3 minutes' THEN 0 ELSE 1 END,
         a.ultimo_heartbeat DESC NULLS LAST
       LIMIT 20
     `

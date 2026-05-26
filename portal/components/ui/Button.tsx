@@ -22,10 +22,11 @@ const sizeClass = {
   lg: 'px-6 py-3 text-base',
 }
 
-export function Button({ variant = 'primary', size = 'md', loading, children, className, disabled, ...props }: ButtonProps) {
+export function Button({ variant = 'primary', size = 'md', loading, children, className, disabled, type = 'button', ...props }: ButtonProps) {
   return (
     <button
       {...props}
+      type={type}
       disabled={disabled || loading}
       className={cn(
         'inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-all duration-150',

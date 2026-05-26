@@ -44,8 +44,12 @@ agent/*.sqlite
 agent/agent
 agent/sga-agent
 agent/sga-agent-*
+agent/sga-agent.exe
 # Arquivo de config real (use config.example.json como template)
 agent/config.json
+
+# ─── Secrets (NUNCA commitar) ────────────────────────────────────────────────
+infra/emqx/api_keys.txt
 
 # ─── Infra / Docker ───────────────────────────────────────────────────────────
 infra/emqx/data/

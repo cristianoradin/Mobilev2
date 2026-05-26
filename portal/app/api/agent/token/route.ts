@@ -15,8 +15,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { generateAgentJWT } from '@/lib/jwt'
 import { findClienteSafe } from '@/lib/repositories/clientes'
+import { writeAudit } from '@/lib/audit'
 
-const BROKER      = process.env.MQTT_BROKER      ?? 'mqtts://cloud.gruposgapetro.com.br:8883'
+const BROKER      = process.env.MQTT_BROKER      ?? 'mqtt://cloud.gruposgapetro.com.br:1883'
 const PORTAL_URL  = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://mobilev2.gruposgapetro.com.br:4444'
 const PUSH_SECRET = process.env.PUSH_SECRET      ?? ''
 const AGENT_EXE_URL = `${PORTAL_URL}/agent/sga-agent.exe`
@@ -62,13 +63,17 @@ export async function POST(req: NextRequest) {
     // Gera o JWT do agente
     const jwt = await generateAgentJWT(cliente)
 
+    // MQTT: username = CNPJ limpo, password = JWT do agente
+    // O EMQX valida o JWT (RS256) e o ACL garante isolamento por CNPJ
+    const cnpjClean = cliente.cnpj.replace(/\D/g, '')
+
     // Monta o setup token — sem credenciais de banco (técnico digita no local)
     const payload: SetupTokenPayload = {
       jwt,
       cliente_nome: cliente.nome,
       broker:       BROKER,
-      mqtt_user:    'agent',
-      mqtt_pass:    '',
+      mqtt_user:    cnpjClean,
+      mqtt_pass:    jwt,
       portal_url:   PORTAL_URL,
       push_secret:  PUSH_SECRET,
       db: {
@@ -89,6 +94,13 @@ export async function POST(req: NextRequest) {
       `Invoke-WebRequest -Uri $url -OutFile $dest -UseBasicParsing`,
       `& $dest setup "${setupToken}"`,
     ].join('\n')
+
+    void writeAudit(req, {
+      acao:       'token.generate',
+      recurso:    cliente.nome,
+      status:     'ok',
+      cliente_id: cliente.id,
+    })
 
     return NextResponse.json({
       setup_token:  setupToken,

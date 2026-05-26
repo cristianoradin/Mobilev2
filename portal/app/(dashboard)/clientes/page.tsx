@@ -8,9 +8,11 @@ import { Button }  from '@/components/ui/Button'
 import { Input }   from '@/components/ui/Input'
 import { type Cliente, type Plano, type UserRole } from '@/lib/types'
 import { SYSTEM_TEMPLATES } from '@/lib/templates'
+import { EmpresasDescobertas } from '@/components/clientes/EmpresasDescobertas'
+import { MultiPicker }         from '@/components/ui/MultiPicker'
 import {
   Plus, Building2, Mail, Phone, ChevronRight,
-  Key, BarChart3, X, Loader2, Users, Trash2, UserPlus,
+  Key, BarChart3, X, Loader2, Users, Trash2, UserPlus, Save, Building,
   LayoutDashboard, LineChart, PieChart, Gauge, TrendingUp, TableProperties,
   Flame, Layers, MousePointerClick, PanelsTopLeft,
   Terminal, Copy, Check, Search, Wifi, WifiOff, Clock,
@@ -132,6 +134,9 @@ export default function ClientesPage() {
 
   // ── Usuários ────────────────────────────────────────────────────────────
   const [usuarios,          setUsuarios]          = useState<Usuario[]>([])
+  const [editEmpUser,       setEditEmpUser]       = useState<Usuario | null>(null)
+  const [editEmpIds,        setEditEmpIds]        = useState<number[]>([])
+  const [editEmpSaving,     setEditEmpSaving]     = useState(false)
   const [carregandoUsers,   setCarregandoUsers]   = useState(false)
   const [modalUsuario,      setModalUsuario]      = useState(false)
   const [formUser,          setFormUser]          = useState({ nome: '', email: '', telefone: '', role: 'operador' as UserRole, senha: '', empresa_ids: [] as number[] })
@@ -211,6 +216,35 @@ export default function ClientesPage() {
     if (!confirm('Desativar este usuário?')) return
     await fetch(`/api/clientes/${selecionado.id}/usuarios?usuario_id=${userId}`, { method: 'DELETE' })
     setUsuarios(prev => prev.filter(u => u.id !== userId))
+  }
+
+  function abrirEditEmpresas(u: Usuario) {
+    setEditEmpUser(u)
+    setEditEmpIds(u.empresaIds ?? [])
+  }
+
+  async function salvarEmpresasUsuario() {
+    if (!editEmpUser || !selecionado) return
+    setEditEmpSaving(true)
+    try {
+      const res = await fetch(
+        `/api/clientes/${selecionado.id}/usuarios?usuario_id=${editEmpUser.id}`,
+        {
+          method:  'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ empresa_ids: editEmpIds }),
+        },
+      )
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        alert(j.error ?? 'Erro ao atualizar empresas')
+        return
+      }
+      setEditEmpUser(null)
+      await carregarUsuarios(selecionado.id)
+    } finally {
+      setEditEmpSaving(false)
+    }
   }
 
   async function resetarSenha(userId: string) {
@@ -456,6 +490,13 @@ export default function ClientesPage() {
                     ))}
                   </div>
 
+                  {/* Empresas descobertas pelo agente */}
+                  <EmpresasDescobertas
+                    clienteId={selecionado.id}
+                    empresas={selecionado.empresas}
+                    onChange={carregarClientes}
+                  />
+
                   {/* ── Usuários ── */}
                   <div className="border-t border-white/8 pt-3 mb-4">
                     <div className="flex items-center justify-between mb-2">
@@ -492,6 +533,13 @@ export default function ClientesPage() {
                               <Badge variant={u.role === 'dono' ? 'purple' : u.role === 'gerente' ? 'info' : 'default'}>
                                 {u.role}
                               </Badge>
+                              <button
+                                onClick={() => abrirEditEmpresas(u)}
+                                className="text-white/20 hover:text-emerald-400 transition-colors flex-shrink-0"
+                                title="Editar postos vinculados"
+                              >
+                                <Building size={11} />
+                              </button>
                               <button
                                 onClick={() => resetarSenha(u.id)}
                                 className="text-white/20 hover:text-amber-400 transition-colors flex-shrink-0"
@@ -697,39 +745,20 @@ export default function ClientesPage() {
                 </div>
               </div>
 
-              {/* ── Postos (empresas) ── */}
+              {/* ── Postos (empresas) — MultiPicker com search ── */}
               {selecionado.empresas.length > 0 && (
-                <div>
-                  <label className="text-white/60 text-xs mb-2 block flex items-center gap-1.5">
-                    <Building2 size={11} />
-                    Postos com acesso *
-                    {selecionado.empresas.length === 1 && (
-                      <span className="text-white/30 text-[10px]">(único posto — selecionado automaticamente)</span>
-                    )}
-                  </label>
-                  <div className="space-y-1.5">
-                    {selecionado.empresas.map(emp => (
-                      <label
-                        key={emp.id}
-                        className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border cursor-pointer transition-colors ${
-                          formUser.empresa_ids.includes(emp.id)
-                            ? 'border-[#009c3b]/40 bg-[#009c3b]/8 text-white'
-                            : 'border-white/8 bg-white/3 text-white/50 hover:border-white/15'
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          className="accent-[#009c3b]"
-                          checked={formUser.empresa_ids.includes(emp.id)}
-                          onChange={() => toggleEmpresa(emp.id)}
-                        />
-                        <Building2 size={13} className={formUser.empresa_ids.includes(emp.id) ? 'text-[#009c3b]' : 'text-white/30'} />
-                        <span className="text-sm flex-1">{emp.nome}</span>
-                        {emp.is_master && <Badge variant="default">Master</Badge>}
-                      </label>
-                    ))}
-                  </div>
-                </div>
+                <MultiPicker
+                  label="Postos com acesso *"
+                  placeholder="Buscar posto…"
+                  maxHeight="240px"
+                  items={selecionado.empresas.map(e => ({
+                    id:    e.id,
+                    label: e.nome,
+                    badge: e.is_master ? 'Master' : undefined,
+                  }))}
+                  selectedIds={formUser.empresa_ids}
+                  onChange={ids => setFormUser(f => ({ ...f, empresa_ids: ids as number[] }))}
+                />
               )}
 
               {erroUser && (
@@ -1017,6 +1046,55 @@ export default function ClientesPage() {
                 </Button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal: editar empresas do usuário ── */}
+      {editEmpUser && selecionado && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={() => setEditEmpUser(null)}>
+          <div className="bg-[#111] border border-white/10 rounded-2xl w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-3 border-b border-white/8">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 bg-emerald-500/15 border border-emerald-500/25 rounded-lg flex items-center justify-center">
+                  <Building size={14} className="text-emerald-400" />
+                </div>
+                <div>
+                  <p className="text-white font-semibold text-sm">Postos de {editEmpUser.nome}</p>
+                  <p className="text-white/40 text-[10px]">{editEmpUser.email}</p>
+                </div>
+              </div>
+              <button onClick={() => setEditEmpUser(null)} className="p-1.5 rounded-lg hover:bg-white/8">
+                <X size={15} className="text-white/50" />
+              </button>
+            </div>
+            <div className="p-4 space-y-3">
+              {selecionado.empresas.length === 0 ? (
+                <p className="text-white/40 text-xs text-center py-6">Cliente sem postos cadastrados</p>
+              ) : (
+                <MultiPicker
+                  label="Postos com acesso"
+                  placeholder="Buscar posto…"
+                  maxHeight="320px"
+                  items={selecionado.empresas.map(e => ({
+                    id:    e.id,
+                    label: e.nome,
+                    badge: e.is_master ? 'Master' : undefined,
+                  }))}
+                  selectedIds={editEmpIds}
+                  onChange={ids => setEditEmpIds(ids as number[])}
+                />
+              )}
+              <div className="flex gap-2 pt-1">
+                <Button variant="secondary" onClick={() => setEditEmpUser(null)} disabled={editEmpSaving} className="flex-1">
+                  Cancelar
+                </Button>
+                <Button variant="primary" onClick={salvarEmpresasUsuario} loading={editEmpSaving} className="flex-1">
+                  <Save size={13} />
+                  Salvar
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
       )}

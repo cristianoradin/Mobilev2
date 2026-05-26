@@ -4,36 +4,14 @@
  * Apenas role 'dono' pode criar/listar usuários
  */
 import { NextRequest, NextResponse } from 'next/server'
-import { jwtVerify } from 'jose'
-import { listUsuariosByCliente, createUsuario } from '@/lib/repositories/usuarios'
-import { findClienteSafe } from '@/lib/repositories/clientes'
-import type { UserRole } from '@/lib/types'
-
-const DEV_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET ?? 'sga-petro-dev-secret-change-in-production-min-32-chars'
-)
-
-interface JWTPayload {
-  sub:       string   // usuario_id
-  role:      string
-  client_id: string
-}
-
-async function verificarJWT(req: NextRequest): Promise<JWTPayload | null> {
-  const auth = req.headers.get('authorization') ?? ''
-  const token = auth.startsWith('Bearer ') ? auth.slice(7) : null
-  if (!token) return null
-  try {
-    const { payload } = await jwtVerify(token, DEV_SECRET)
-    return payload as unknown as JWTPayload
-  } catch {
-    return null
-  }
-}
+import { getUserFromRequest }                    from '@/lib/jwt-verify'
+import { listUsuariosByCliente, createUsuario }  from '@/lib/repositories/usuarios'
+import { findClienteSafe }                       from '@/lib/repositories/clientes'
+import type { UserRole }                         from '@/lib/types'
 
 // GET /api/mobile/usuarios
 export async function GET(req: NextRequest) {
-  const payload = await verificarJWT(req)
+  const payload = await getUserFromRequest(req)
   if (!payload) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   if (payload.role !== 'dono' && payload.role !== 'gerente') {
     return NextResponse.json({ error: 'Permissão insuficiente' }, { status: 403 })
@@ -41,7 +19,6 @@ export async function GET(req: NextRequest) {
 
   try {
     const usuarios = await listUsuariosByCliente(payload.client_id)
-    // Busca empresas do cliente para montar os nomes dos postos
     const cliente  = await findClienteSafe(payload.client_id)
     return NextResponse.json({ usuarios, empresas: cliente?.empresas ?? [] })
   } catch (err) {
@@ -52,7 +29,7 @@ export async function GET(req: NextRequest) {
 
 // POST /api/mobile/usuarios
 export async function POST(req: NextRequest) {
-  const payload = await verificarJWT(req)
+  const payload = await getUserFromRequest(req)
   if (!payload) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   if (payload.role !== 'dono') {
     return NextResponse.json({ error: 'Apenas o proprietário pode criar usuários' }, { status: 403 })

@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
 import { PanelsTopLeft, RefreshCw, BarChart3, LineChart, PieChart,
   Gauge, TrendingUp, TableProperties, Flame, Layers, WifiOff } from 'lucide-react'
-import { Card }  from '@/components/ui/Card'
-import { Badge } from '@/components/ui/Badge'
+import { Card }         from '@/components/ui/Card'
+import { Badge }        from '@/components/ui/Badge'
+import { ScreenHeader } from '@/components/ui/ScreenHeader'
 import { useAuth } from '@/core/auth/AuthContext'
 
 const PORTAL_URL = import.meta.env.VITE_PORTAL_URL ?? 'https://mobilev2.gruposgapetro.com.br:4443'
@@ -47,19 +48,18 @@ export function DashboardsScreen() {
 
   return (
     <div className="pt-4 space-y-5">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-ink">Dashboards</h1>
-          <p className="text-ink/40 text-sm">Painéis liberados para o seu posto</p>
-        </div>
-        <button
-          onClick={carregar}
-          className="p-2.5 bg-surface border border-rim rounded-xl transition-all active:scale-90"
-        >
-          <RefreshCw size={16} className={`text-ink/60 ${loading ? 'animate-spin' : ''}`} />
-        </button>
-      </div>
+      <ScreenHeader
+        title="Dashboards"
+        subtitle="Painéis liberados para o seu posto"
+        action={
+          <button
+            onClick={carregar}
+            className="p-2.5 bg-surface rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] border border-rim/40 transition-all active:scale-90"
+          >
+            <RefreshCw size={16} className={`text-ink/60 ${loading ? 'animate-spin' : ''}`} />
+          </button>
+        }
+      />
 
       {/* Loading */}
       {loading && (

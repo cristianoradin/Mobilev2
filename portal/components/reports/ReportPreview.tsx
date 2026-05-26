@@ -97,11 +97,15 @@ const WIDTHS: Record<string, string> = {
 }
 
 // ── componente principal ──────────────────────────────────────────────────────
-interface Props { metadata: ChartMetadata }
+interface Props {
+  metadata: ChartMetadata
+  /** Dados reais retornados pelo agente; se ausente, usa mock seeded */
+  realData?: { columns: string[]; rows: Record<string, unknown>[] } | null
+}
 
 const ROWS = 8
 
-export function ReportPreview({ metadata }: Props) {
+export function ReportPreview({ metadata, realData }: Props) {
   const cfg = metadata.report_config
 
   const columns: ReportColumn[] = useMemo(() => {
@@ -116,13 +120,16 @@ export function ReportPreview({ metadata }: Props) {
     ]
   }, [cfg?.columns])
 
-  const rows = useMemo(
-    () => Array.from({ length: ROWS }, (_, i) =>
+  // Se realData veio do agente, usa direto (mais fiel). Senão, gera mock seeded.
+  const useReal = Boolean(realData?.rows?.length)
+  const rows = useMemo(() => {
+    if (useReal) return realData!.rows
+    return Array.from({ length: ROWS }, (_, i) =>
       Object.fromEntries(columns.map(c => [c.field, mockValue(c, i)]))
-    ),
-    [columns]
-  )
+    )
+  }, [columns, useReal, realData])
 
+  const rowCount    = rows.length
   const showTotals  = cfg?.show_totals ?? true
   const showIndex   = cfg?.show_index  ?? false
 
@@ -130,8 +137,10 @@ export function ReportPreview({ metadata }: Props) {
     <div className="h-full flex flex-col bg-[#111111]">
       {/* Barra de contexto */}
       <div className="flex items-center justify-between px-4 py-2 bg-[#1a1a1a] border-b border-white/8 flex-shrink-0">
-        <span className="text-white/40 text-xs">Preview — dados mock</span>
-        <span className="text-white/30 text-xs">relatório · {columns.length} colunas · {ROWS} linhas</span>
+        <span className={cn('text-xs', useReal ? 'text-emerald-400/80' : 'text-white/40')}>
+          {useReal ? '● Dados reais do agente' : 'Preview — dados mock'}
+        </span>
+        <span className="text-white/30 text-xs">relatório · {columns.length} colunas · {rowCount} linhas</span>
       </div>
 
       {/* Tabela */}
@@ -265,7 +274,7 @@ export function ReportPreview({ metadata }: Props) {
       {/* Rodapé informativo */}
       <div className="flex items-center justify-between px-4 py-2 bg-[#161616] border-t border-white/8 flex-shrink-0">
         <div className="flex items-center gap-4 text-[10px] text-white/30">
-          <span>{ROWS} registros simulados</span>
+          <span>{rowCount} {useReal ? 'registros reais' : 'registros simulados'}</span>
           {showTotals && <span>· rodapé de totais ativo</span>}
           {showIndex  && <span>· numeração de linhas ativa</span>}
         </div>

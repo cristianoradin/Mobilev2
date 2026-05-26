@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { RefreshCw, WifiOff, Clock, BarChart3 } from 'lucide-react'
 import { DynamicChart } from '@/components/charts/DynamicChart'
-import { Card } from '@/components/ui/Card'
+import { Card }         from '@/components/ui/Card'
+import { ScreenHeader } from '@/components/ui/ScreenHeader'
 import { useChartData } from '@/hooks/useChartData'
 import type { ChartMetadata } from '@/lib/contracts'
 
@@ -84,21 +85,18 @@ export function VendasScreen() {
 
   return (
     <div className="pt-4 space-y-5">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-ink">Vendas</h1>
-          <p className="text-ink/40 text-sm">
-            {offline ? 'Agente offline' : 'Análise em tempo real'}
-          </p>
-        </div>
-        <button
-          onClick={() => { vendas.refresh(true); mix.refresh(true); kpiData.refresh(true) }}
-          className="p-2.5 bg-surface border border-rim rounded-xl transition-all active:scale-90"
-        >
-          <RefreshCw size={16} className={`text-ink/60 ${anyLoading ? 'animate-spin' : ''}`} />
-        </button>
-      </div>
+      <ScreenHeader
+        title="Vendas"
+        subtitle={offline ? 'Agente offline' : 'Análise em tempo real'}
+        action={
+          <button
+            onClick={() => { vendas.refresh(true); mix.refresh(true); kpiData.refresh(true) }}
+            className="p-2.5 bg-surface rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] border border-rim/40 transition-all active:scale-90"
+          >
+            <RefreshCw size={16} className={`text-ink/60 ${anyLoading ? 'animate-spin' : ''}`} />
+          </button>
+        }
+      />
 
       {/* Agente offline — sem dados */}
       {offline && (

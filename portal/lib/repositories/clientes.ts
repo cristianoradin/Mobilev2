@@ -2,13 +2,14 @@ import { getDb } from '@/lib/db'
 import { MOCK_CLIENTES, type Cliente, type Plano } from '@/lib/types'
 
 export interface CreateClienteInput {
-  nome:           string
-  cnpj:           string
-  email:          string
-  telefone?:      string
-  plano:          Plano
-  empresa_nome:   string          // nome da empresa/filial master
-  empresa_cnpj?:  string          // cnpj_filial opcional
+  nome:              string
+  cnpj:              string
+  email:             string
+  telefone?:         string
+  plano:             Plano
+  empresa_nome:      string          // nome da empresa/filial master
+  empresa_cnpj?:     string          // cnpj_filial opcional
+  empresa_codigo_erp?: number        // código da empresa no ERP local (empcodigo)
 }
 
 export async function listClientes(): Promise<Cliente[]> {
@@ -18,14 +19,19 @@ export async function listClientes(): Promise<Cliente[]> {
       c.id, c.nome, c.cnpj, c.email, c.telefone, c.plano, c.ativo, c.created_at,
       COALESCE(
         json_agg(
-          json_build_object('id', e.id, 'nome', e.nome, 'cnpj_filial', e.cnpj_filial, 'is_master', e.is_master)
+          json_build_object('id', e.id, 'nome', e.nome, 'cnpj_filial', e.cnpj_filial, 'is_master', e.is_master, 'codigo_erp', e.codigo_erp)
           ORDER BY e.is_master DESC, e.nome
         ) FILTER (WHERE e.id IS NOT NULL),
         '[]'
       ) AS empresas,
-      -- agente mais recente do cliente
-      a.status              AS agente_status,
-      a.ultimo_heartbeat::text AS agente_ultimo_heartbeat
+      -- agente_status derivado do heartbeat (3min = 3 batidas perdidas).
+      -- Coluna a.status no DB mente após queda; ultimo_heartbeat é source of truth.
+      CASE
+        WHEN a.ultimo_heartbeat IS NULL                              THEN NULL
+        WHEN a.ultimo_heartbeat > NOW() - INTERVAL '3 minutes'       THEN 'online'
+        ELSE 'offline'
+      END                          AS agente_status,
+      a.ultimo_heartbeat::text     AS agente_ultimo_heartbeat
     FROM clientes c
     LEFT JOIN empresas e ON e.cliente_id = c.id AND e.ativo = true
     LEFT JOIN LATERAL (
@@ -39,7 +45,13 @@ export async function listClientes(): Promise<Cliente[]> {
     GROUP BY c.id, a.status, a.ultimo_heartbeat
     ORDER BY c.nome
   `
-  return rows as unknown as Cliente[]
+  // postgres.js transforma snake_case → camelCase; normalizamos de volta
+  return rows.map(r => ({
+    ...r,
+    created_at:              r.createdAt              ?? r.created_at,
+    agente_status:           r.agenteStatus           ?? r.agente_status           ?? null,
+    agente_ultimo_heartbeat: r.agenteUltimoHeartbeat  ?? r.agente_ultimo_heartbeat  ?? null,
+  })) as unknown as Cliente[]
 }
 
 export async function findCliente(id: string): Promise<Cliente | null> {
@@ -49,7 +61,7 @@ export async function findCliente(id: string): Promise<Cliente | null> {
       c.id, c.nome, c.cnpj, c.email, c.telefone, c.plano, c.ativo, c.created_at,
       COALESCE(
         json_agg(
-          json_build_object('id', e.id, 'nome', e.nome, 'cnpj_filial', e.cnpj_filial, 'is_master', e.is_master)
+          json_build_object('id', e.id, 'nome', e.nome, 'cnpj_filial', e.cnpj_filial, 'is_master', e.is_master, 'codigo_erp', e.codigo_erp)
           ORDER BY e.is_master DESC, e.nome
         ) FILTER (WHERE e.id IS NOT NULL),
         '[]'
@@ -91,9 +103,9 @@ export async function createCliente(input: CreateClienteInput): Promise<Cliente>
       RETURNING id, nome, cnpj, email, telefone, plano, ativo, created_at
     `
     const [empresa] = await tx`
-      INSERT INTO empresas (cliente_id, nome, cnpj_filial, is_master)
-      VALUES (${cliente.id}, ${input.empresa_nome}, ${input.empresa_cnpj ?? null}, true)
-      RETURNING id, nome, cnpj_filial, is_master
+      INSERT INTO empresas (cliente_id, nome, cnpj_filial, is_master, codigo_erp)
+      VALUES (${cliente.id}, ${input.empresa_nome}, ${input.empresa_cnpj ?? null}, true, ${input.empresa_codigo_erp ?? null})
+      RETURNING id, nome, cnpj_filial, is_master, codigo_erp
     `
     return [{ ...cliente, empresas: [empresa] }]
   })

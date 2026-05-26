@@ -21,12 +21,35 @@ if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
 }
 
 export type PushPayload = {
-  title:    string
-  body:     string
-  icon?:    string
-  badge?:   string
-  tag?:     string
-  data?:    Record<string, unknown>
+  title:        string
+  body:         string
+  icon?:        string
+  badge?:       string
+  tag?:         string
+  data?:        Record<string, unknown>
+  severidade?:  'info' | 'warn' | 'critical'  // usado pelo SW para requireInteraction
+}
+
+export type PushResult = 'ok' | 'expired' | 'error'
+
+/**
+ * Versão com resultado discriminado: distingue subscription expirada (410/404)
+ * de erro transitório. Use quando precisar limpar subs inválidas.
+ */
+export async function sendPush(
+  subscription: PushSubscription,
+  payload:      PushPayload,
+): Promise<PushResult> {
+  if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) return 'error'
+  try {
+    await webpush.sendNotification(subscription, JSON.stringify(payload))
+    return 'ok'
+  } catch (err: unknown) {
+    const code = (err as { statusCode?: number }).statusCode
+    if (code === 410 || code === 404) return 'expired'
+    console.error('[WebPush] Falha ao enviar:', err)
+    return 'error'
+  }
 }
 
 /**

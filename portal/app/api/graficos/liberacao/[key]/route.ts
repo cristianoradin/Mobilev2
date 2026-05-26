@@ -4,10 +4,16 @@
  *
  * - tmpl-XXX → sistema: salva em template_liberacoes
  * - UUID     → custom:  salva em graficos.is_publico + graficos.cliente_ids
+ *
+ * Após salvar, dispara SYNC_TEMPLATE (retained) para os agentes afetados
+ * para que o template fique disponível no cache local do agente Go.
  */
-import { NextRequest, NextResponse } from 'next/server'
-import { setTemplateLiberacao }  from '@/lib/repositories/liberacoes'
-import { setGraficoLiberacao }   from '@/lib/repositories/graficos'
+import { NextRequest, NextResponse }  from 'next/server'
+import { setTemplateLiberacao }        from '@/lib/repositories/liberacoes'
+import { setGraficoLiberacao,
+         getGraficoByIdSafe }          from '@/lib/repositories/graficos'
+import { SYSTEM_TEMPLATES }            from '@/lib/templates'
+import { syncTemplateToAgents }        from '@/lib/syncTemplate'
 
 export async function PUT(
   req: NextRequest,
@@ -22,9 +28,21 @@ export async function PUT(
     if (key.startsWith('tmpl-')) {
       // Template do sistema → tabela template_liberacoes
       await setTemplateLiberacao(key, isPublico, clienteIds)
+
+      // Auto-sync: encontra o template do sistema pelo ID
+      const sysMeta = SYSTEM_TEMPLATES.find(t => t.id === key)
+      if (sysMeta) {
+        void syncTemplateToAgents(sysMeta, isPublico, clienteIds)
+      }
     } else {
       // Template customizado → coluna direta na tabela graficos
       await setGraficoLiberacao(key, isPublico, clienteIds)
+
+      // Auto-sync: busca o template completo e sincroniza
+      const meta = await getGraficoByIdSafe(key)
+      if (meta) {
+        void syncTemplateToAgents(meta, isPublico, clienteIds)
+      }
     }
 
     return NextResponse.json({ ok: true })

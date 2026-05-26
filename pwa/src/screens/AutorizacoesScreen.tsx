@@ -1,6 +1,7 @@
 import { Shield, Check, X, Clock, Fuel, Wifi, WifiOff } from 'lucide-react'
-import { Card }    from '@/components/ui/Card'
-import { Badge }   from '@/components/ui/Badge'
+import { Card }         from '@/components/ui/Card'
+import { Badge }        from '@/components/ui/Badge'
+import { ScreenHeader } from '@/components/ui/ScreenHeader'
 import { useAuth } from '@/core/auth/AuthContext'
 import { useMQTT } from '@/core/mqtt/MQTTContext'
 import { useAutorizacoes } from '@/core/autorizacoes/useAutorizacoes'
@@ -109,33 +110,27 @@ export function AutorizacoesScreen() {
 
   return (
     <div className="pt-4 space-y-5">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-ink">Autorizações</h1>
-          <p className="text-ink/40 text-sm">Descontos aguardando aprovação</p>
-        </div>
-        <div className="flex items-center gap-2">
-          {/* Status MQTT */}
-          <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium ${
-            connected
-              ? 'bg-primary/10 border-primary/30 text-primary'
-              : 'bg-danger/10 border-danger/30 text-danger'
-          }`}>
-            {connected
-              ? <Wifi size={11} />
-              : <WifiOff size={11} />
-            }
-            {connected ? 'Conectado' : 'Offline'}
-          </div>
-          {/* Badge de pendentes */}
-          {pendentes.length > 0 && (
-            <div className="w-8 h-8 bg-yellow/20 border border-yellow/40 rounded-full flex items-center justify-center">
-              <span className="text-yellow font-bold text-sm">{pendentes.length}</span>
+      <ScreenHeader
+        title="Autorizações"
+        subtitle="Descontos aguardando aprovação"
+        action={
+          <div className="flex items-center gap-2">
+            <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium ${
+              connected
+                ? 'bg-primary/10 border-primary/30 text-primary'
+                : 'bg-danger/10 border-danger/30 text-danger'
+            }`}>
+              {connected ? <Wifi size={11} /> : <WifiOff size={11} />}
+              {connected ? 'Conectado' : 'Offline'}
             </div>
-          )}
-        </div>
-      </div>
+            {pendentes.length > 0 && (
+              <div className="w-8 h-8 bg-yellow/20 border border-yellow/40 rounded-full flex items-center justify-center">
+                <span className="text-yellow font-bold text-sm">{pendentes.length}</span>
+              </div>
+            )}
+          </div>
+        }
+      />
 
       {/* Pendentes */}
       {pendentes.length === 0 ? (

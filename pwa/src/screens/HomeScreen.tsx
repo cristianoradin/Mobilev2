@@ -1,10 +1,9 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { TrendingUp, Fuel, DollarSign, Shield, Settings, ChevronRight,
-  BarChart3, PanelsTopLeft, Megaphone } from 'lucide-react'
-import { useAuth } from '@/core/auth/AuthContext'
-import { useMQTT } from '@/core/mqtt/MQTTContext'
-import { Badge }   from '@/components/ui/Badge'
+import { Megaphone, Sparkles } from 'lucide-react'
+import { useAuth }       from '@/core/auth/AuthContext'
+import { useMQTT }       from '@/core/mqtt/MQTTContext'
+import { RobotIcon }     from '@/components/ui/RobotIcon'
+import { WeatherInline } from '@/components/ui/WeatherInline'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 interface PropagandaData {
@@ -18,57 +17,20 @@ interface PropagandaData {
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'https://cloud.gruposgapetro.com.br'
 
-// ─── Banner de propaganda ─────────────────────────────────────────────────────
-function PropagandaBanner({ session }: { session: { jwt: string } | null }) {
-  const [prop,     setProp]     = useState<PropagandaData | null>(null)
-  const [visible,  setVisible]  = useState(false)
-  const [imgError, setImgError] = useState(false)
-
-  useEffect(() => {
-    if (!session?.jwt) return
-    fetch(`${API_URL}/api/mobile/propaganda`, {
-      headers: { Authorization: `Bearer ${session.jwt}` },
-    })
-      .then(r => r.json())
-      .then((d: { propaganda?: PropagandaData | null }) => {
-        const p = d.propaganda
-        if (!p) return
-
-        setProp(p)
-        setVisible(true)
-
-        // Esconde automaticamente quando a propaganda expirar
-        if (p.expires_at) {
-          const msLeft = new Date(p.expires_at).getTime() - Date.now()
-          if (msLeft > 0) {
-            const timer = setTimeout(() => setVisible(false), msLeft)
-            return () => clearTimeout(timer)
-          }
-        }
-      })
-      .catch(() => {})
-  }, [session?.jwt])
-
-  if (!visible || !prop) return null
-
+// ─── Single propaganda card ──────────────────────────────────────────────────
+function PropagandaCard({ prop, imgError, onImgError }: {
+  prop: PropagandaData
+  imgError: boolean
+  onImgError: () => void
+}) {
   return (
-    // A propaganda não pode ser fechada pelo usuário — respeita a duração definida no portal
-    <div className="overflow-hidden rounded-2xl border border-primary/25 bg-surface shadow-lg shadow-primary/5 animate-fade-in">
-      {/* Imagem */}
+    <div className="overflow-hidden rounded-2xl bg-surface shadow-[0_2px_12px_rgba(0,0,0,0.1)]">
       {prop.imagem && !imgError && (
         <div className="relative w-full h-40 overflow-hidden">
-          <img
-            src={prop.imagem}
-            alt={prop.titulo}
-            className="w-full h-full object-cover"
-            onError={() => setImgError(true)}
-          />
-          {/* Gradiente de leitura */}
+          <img src={prop.imagem} alt={prop.titulo} className="w-full h-full object-cover" onError={onImgError} />
           <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
         </div>
       )}
-
-      {/* Conteúdo */}
       <div className="px-4 py-3">
         <div className="flex items-start gap-2">
           <div className="w-6 h-6 rounded-lg bg-primary/15 flex items-center justify-center flex-shrink-0 mt-0.5">
@@ -76,9 +38,7 @@ function PropagandaBanner({ session }: { session: { jwt: string } | null }) {
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-ink font-bold text-sm leading-tight">{prop.titulo}</p>
-            {prop.descricao && (
-              <p className="text-ink/55 text-xs mt-1 leading-relaxed line-clamp-3">{prop.descricao}</p>
-            )}
+            {prop.descricao && <p className="text-ink/55 text-xs mt-1 leading-relaxed line-clamp-3">{prop.descricao}</p>}
           </div>
         </div>
       </div>
@@ -86,80 +46,135 @@ function PropagandaBanner({ session }: { session: { jwt: string } | null }) {
   )
 }
 
-const menuItems = [
-  { icon: TrendingUp,     label: 'Vendas',         sub: 'Relatório do dia',           color: '#009c3b', bg: '#009c3b20', route: '/vendas',      badge: null },
-  { icon: Fuel,           label: 'Estoque',        sub: 'Nível dos tanques',          color: '#3b82f6', bg: '#3b82f620', route: '/estoque',     badge: null },
-  { icon: DollarSign,     label: 'Troca de Preço', sub: 'Atualizar valores',          color: '#f97316', bg: '#f9731620', route: '/preco',       badge: null },
-  { icon: Shield,         label: 'Autorizações',   sub: 'Descontos pendentes',        color: '#fbbf24', bg: '#fbbf2420', route: '/auth',        badge: null },
-  { icon: BarChart3,      label: 'Gráficos',       sub: 'Templates disponíveis',      color: '#6366f1', bg: '#6366f120', route: '/graficos',    badge: null },
-  { icon: PanelsTopLeft,  label: 'Dashboards',     sub: 'Painéis liberados',          color: '#ec4899', bg: '#ec489920', route: '/dashboards',  badge: null },
-  { icon: Settings,       label: 'Configurações',  sub: 'Conta e preferências',       color: '#64748b', bg: '#64748b20', route: '/config',      badge: null },
-]
+// ─── Carousel propagandas ─────────────────────────────────────────────────────
+function PropagandaBanner({ session }: { session: { jwt: string } | null }) {
+  const [list,      setList]      = useState<PropagandaData[]>([])
+  const [idx,       setIdx]       = useState(0)
+  const [imgErrors, setImgErrors] = useState<Set<string>>(new Set())
 
+  useEffect(() => {
+    if (!session?.jwt) return
+    fetch(`${API_URL}/api/mobile/propaganda`, { headers: { Authorization: `Bearer ${session.jwt}` } })
+      .then(r => r.json())
+      .then((d: { propagandas?: PropagandaData[]; propaganda?: PropagandaData | null }) => {
+        const items = d.propagandas ?? (d.propaganda ? [d.propaganda] : [])
+        setList(items)
+      })
+      .catch(() => {})
+  }, [session?.jwt])
+
+  useEffect(() => {
+    if (list.length < 2) return
+    const id = setInterval(() => setIdx(i => (i + 1) % list.length), 5000)
+    return () => clearInterval(id)
+  }, [list.length])
+
+  useEffect(() => {
+    if (list.length === 0) return
+    const timers = list.filter(p => p.expires_at).map(p => {
+      const msLeft = new Date(p.expires_at!).getTime() - Date.now()
+      if (msLeft <= 0) return null
+      return setTimeout(() => { setList(curr => curr.filter(x => x.id !== p.id)) }, msLeft)
+    }).filter((t): t is ReturnType<typeof setTimeout> => t !== null)
+    return () => { timers.forEach(clearTimeout) }
+  }, [list])
+
+  useEffect(() => {
+    if (idx >= list.length && list.length > 0) setIdx(0)
+  }, [list.length, idx])
+
+  if (list.length === 0) return null
+  const current = list[idx]
+  const isMulti = list.length > 1
+
+  return (
+    <div className="space-y-2 animate-fade-in">
+      <PropagandaCard prop={current} imgError={imgErrors.has(current.id)} onImgError={() => setImgErrors(s => new Set(s).add(current.id))} />
+      {isMulti && (
+        <div className="flex items-center justify-center gap-1.5 pt-1">
+          {list.map((_, i) => (
+            <button key={i} onClick={() => setIdx(i)}
+              className={`h-1.5 rounded-full transition-all ${i === idx ? 'w-5 bg-primary' : 'w-1.5 bg-ink/20'}`}
+              aria-label={`Comunicado ${i + 1}`} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Tela ─────────────────────────────────────────────────────────────────────
 export function HomeScreen() {
-  const { session }   = useAuth()
-  const { connected } = useMQTT()
-  const navigate      = useNavigate()
+  const { session }                = useAuth()
+  const { mqttPhase, agentOnline } = useMQTT()
 
   const hora         = new Date().getHours()
   const saudacao     = hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite'
   const primeiroNome = session?.nome.split(' ')[0] ?? 'Gestor'
 
+  const robotVariant =
+    mqttPhase === 'offline'      ? 'disconnected' :
+    mqttPhase === 'connecting'   ? 'offline'      :
+    mqttPhase === 'reconnecting' ? 'offline'      :
+    agentOnline                  ? 'online'        :
+                                   'offline'
+
+  const statusLabel =
+    mqttPhase === 'connecting'   ? 'Conectando…'                   :
+    mqttPhase === 'reconnecting' ? 'Reconectando…'                 :
+    mqttPhase === 'offline'      ? 'Sem conexão com o servidor'    :
+    agentOnline                  ? 'Agente conectado'              :
+                                   'Agente offline — modo cache'
+
   return (
-    <div className="pt-4 space-y-6">
-      {/* Banner de propaganda (exibido quando ativo) */}
+    <div className="pt-2 space-y-5">
       <PropagandaBanner session={session} />
-      {/* Saudação */}
+
+      {/* Saudação + clima + status */}
       <div>
         <p className="text-ink/50 text-sm">{saudacao},</p>
-        <h1 className="text-2xl font-bold text-ink">{primeiroNome} 👋</h1>
+        <div className="flex items-center justify-between gap-3 mt-0.5">
+          <h1 className="text-[28px] font-bold text-ink leading-tight">
+            {primeiroNome} <span aria-hidden>👋</span>
+          </h1>
+          <WeatherInline />
+        </div>
         <div className="flex items-center gap-2 mt-2">
-          <div className={`w-2 h-2 rounded-full ${connected ? 'bg-primary' : 'bg-danger animate-pulse'}`} />
-          <span className="text-xs text-ink/40">
-            {connected ? 'Agente conectado' : 'Agente offline — modo cache'}
-          </span>
+          <RobotIcon variant={robotVariant} size={20} />
+          <span className="text-[13px] text-ink/60">{statusLabel}</span>
         </div>
       </div>
 
-      {/* Status do agente — só aparece quando offline */}
-      {!connected && (
-        <div className="bg-surface border border-rim rounded-2xl p-4 flex items-center gap-3">
+      {/* Warnings */}
+      {mqttPhase === 'online' && !agentOnline && (
+        <div className="bg-surface rounded-2xl p-4 flex items-center gap-3 shadow-[0_2px_8px_rgba(0,0,0,0.08)]">
+          <div className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse flex-shrink-0" />
+          <div>
+            <p className="text-ink/70 text-sm font-medium">Agente offline no posto</p>
+            <p className="text-ink/40 text-xs">Dados em tempo real indisponíveis.</p>
+          </div>
+        </div>
+      )}
+      {mqttPhase === 'offline' && (
+        <div className="bg-surface rounded-2xl p-4 flex items-center gap-3 shadow-[0_2px_8px_rgba(0,0,0,0.08)]">
           <div className="w-2 h-2 rounded-full bg-danger animate-pulse flex-shrink-0" />
           <div>
-            <p className="text-ink/70 text-sm font-medium">Agente offline</p>
-            <p className="text-ink/40 text-xs">Sem dados em tempo real. Conecte o agente no posto.</p>
+            <p className="text-ink/70 text-sm font-medium">Sem conexão</p>
+            <p className="text-ink/40 text-xs">Verifique sua internet.</p>
           </div>
         </div>
       )}
 
-      {/* Menu Principal */}
-      <div>
-        <h2 className="text-xs font-semibold text-ink/40 uppercase tracking-wider mb-3">
-          Menu Principal
-        </h2>
-        <div className="space-y-3">
-          {menuItems.map(({ icon: Icon, label, sub, color, bg, route, badge }) => (
-            <button
-              key={route}
-              onClick={() => navigate(route)}
-              className="w-full flex items-center gap-4 bg-surface border border-rim rounded-2xl p-5 transition-all duration-200 active:scale-[0.97] hover:border-rim2 text-left"
-            >
-              <div
-                className="w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0"
-                style={{ backgroundColor: bg }}
-              >
-                <Icon size={28} color={color} strokeWidth={1.8} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <p className="text-ink font-semibold text-[17px]">{label}</p>
-                  {badge && <Badge variant="warning" size="sm">{badge}</Badge>}
-                </div>
-                <p className="text-ink/50 text-[13px] mt-0.5">{sub}</p>
-              </div>
-              <ChevronRight size={18} className="text-ink/30 flex-shrink-0" />
-            </button>
-          ))}
+      {/* Placeholder pra conteúdo futuro */}
+      <div className="bg-surface rounded-2xl p-6 shadow-[0_2px_8px_rgba(0,0,0,0.06)] border border-rim/40 flex flex-col items-center gap-3 text-center">
+        <div className="w-12 h-12 rounded-2xl bg-primary/15 flex items-center justify-center">
+          <Sparkles size={20} className="text-primary" />
+        </div>
+        <div>
+          <p className="text-ink font-semibold text-[15px]">Novidades em breve</p>
+          <p className="text-ink/45 text-[12px] mt-1 max-w-xs">
+            Acesse os recursos pelo menu inferior. Esta área receberá novos widgets em breve.
+          </p>
         </div>
       </div>
     </div>

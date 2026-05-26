@@ -1,9 +1,11 @@
 package mqtt
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -16,10 +18,20 @@ import (
 	"github.com/sga-petro/agent/pkg/models"
 )
 
+// Beater é a interface mínima do watchdog (evita import circular).
+type Beater interface{ Beat() }
+
+// DiscoverRunner roda discovery sob demanda — recebido via MQTT DISCOVER_EMPRESAS.
+type DiscoverRunner interface{ Run(ctx context.Context) }
+
 // AgentClient gerencia a conexão MQTT e o despacho de comandos
 type AgentClient struct {
 	client        pahomqtt.Client
 	cfg           config.MQTTConfig
+	portal        config.PortalConfig
+	agentID       string
+	jwtToken      string
+	versao        string
 	cnpj          string
 	cnpjClean     string // CNPJ sem pontuação para tópicos
 	readHandler   *commands.ReadHandler
@@ -28,11 +40,24 @@ type AgentClient struct {
 	cache         *database.CacheDB
 	log           *zap.Logger
 	done          chan struct{}
+	httpClient    *http.Client
+	watchdog      Beater          // opcional; recebe Beat() a cada heartbeat
+	discoverer    DiscoverRunner  // opcional; chamado em DISCOVER_EMPRESAS MQTT
 }
+
+// SetWatchdog conecta um watchdog ao loop de heartbeat.
+func (a *AgentClient) SetWatchdog(b Beater) { a.watchdog = b }
+
+// SetDiscoverer conecta o discoverer (chamado em comando DISCOVER_EMPRESAS).
+func (a *AgentClient) SetDiscoverer(d DiscoverRunner) { a.discoverer = d }
 
 // NewAgentClient cria e configura o cliente MQTT
 func NewAgentClient(
 	cfg config.MQTTConfig,
+	portal config.PortalConfig,
+	agentID string,
+	jwtToken string,
+	versao string,
 	cnpj string,
 	readH *commands.ReadHandler,
 	writeH *commands.WriteHandler,
@@ -43,6 +68,10 @@ func NewAgentClient(
 	clean := strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(cnpj, ".", ""), "/", ""), "-", "")
 	return &AgentClient{
 		cfg:           cfg,
+		portal:        portal,
+		agentID:       agentID,
+		jwtToken:      jwtToken,
+		versao:        versao,
 		cnpj:          cnpj,
 		cnpjClean:     clean,
 		readHandler:   readH,
@@ -51,6 +80,7 @@ func NewAgentClient(
 		cache:         cache,
 		log:           log,
 		done:          make(chan struct{}),
+		httpClient:    &http.Client{Timeout: 10 * time.Second},
 	}
 }
 
@@ -70,6 +100,7 @@ func (a *AgentClient) Connect() error {
 			a.log.Info("MQTT conectado", zap.String("broker", a.cfg.Broker))
 			a.subscribeToTopics()
 			a.publishStatus("online")
+			go a.pingPortal("online")
 		}).
 		SetConnectionLostHandler(func(_ pahomqtt.Client, err error) {
 			a.log.Warn("MQTT conexão perdida", zap.Error(err))
@@ -146,8 +177,19 @@ func (a *AgentClient) handleMessage(_ pahomqtt.Client, msg pahomqtt.Message) {
 			response, err = a.handleSyncTemplate(&cmd)
 		case models.CmdUpdateAgent:
 			// Roda em goroutine própria — bloqueia durante download + restart
-			// e não precisa enviar resposta MQTT
 			go a.updateHandler.Handle(&cmd)
+			return
+		case models.CmdDiscoverEmpresas:
+			// Dispara descoberta on-demand (portal pediu).
+			if a.discoverer != nil {
+				go func() {
+					dctx, dcancel := context.WithTimeout(context.Background(), 60*time.Second)
+					defer dcancel()
+					a.discoverer.Run(dctx)
+				}()
+			} else {
+				a.log.Warn("DISCOVER_EMPRESAS recebido mas discoverer não configurado")
+			}
 			return
 		default:
 			a.log.Warn("tipo de comando desconhecido", zap.String("type", string(cmd.Type)))
@@ -205,9 +247,12 @@ func (a *AgentClient) publishStatus(status string) {
 		"status":    status,
 		"cnpj":      a.cnpj,
 		"timestamp": time.Now().UnixMilli(),
-		"version":   "1.0.0",
+		"version":   a.versao,
 	})
-	a.publish(topic, payload, 1)
+	// retain=true: o broker guarda o último estado e entrega imediatamente
+	// a qualquer subscriber novo — essencial para o PWA saber se o agente
+	// está online sem esperar o próximo heartbeat (60s)
+	a.Publish(topic, payload, 1, true)
 }
 
 func (a *AgentClient) heartbeatLoop() {
@@ -218,10 +263,75 @@ func (a *AgentClient) heartbeatLoop() {
 		select {
 		case <-ticker.C:
 			a.publishStatus("online")
+			a.pingPortal("online")
+			if a.watchdog != nil {
+				a.watchdog.Beat() // sinaliza vivo ao watchdog
+			}
 		case <-a.done:
 			return
 		}
 	}
+}
+
+// PingPortalDirect é a versão exportada de pingPortal (usada por main.go em modo degraded).
+func (a *AgentClient) PingPortalDirect(status string) { a.pingPortal(status) }
+
+// StartDegradedHeartbeat inicia o loop de heartbeat REST sem MQTT.
+// Usado quando a conexão MQTT falha mas queremos manter presença no portal.
+func (a *AgentClient) StartDegradedHeartbeat() {
+	go func() {
+		a.pingPortal("online")
+		ticker := time.NewTicker(60 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				a.pingPortal("online")
+			case <-a.done:
+				return
+			}
+		}
+	}()
+}
+
+// pingPortal chama POST /api/agent/heartbeat no portal para manter o status no DB.
+// Falhas são apenas logadas — o agente continua funcionando normalmente.
+func (a *AgentClient) pingPortal(status string) {
+	if a.portal.URL == "" || a.jwtToken == "" {
+		return
+	}
+
+	body, _ := json.Marshal(map[string]string{
+		"agent_id": a.agentID,
+		"versao":   a.versao,
+		"status":   status,
+	})
+
+	url := strings.TrimRight(a.portal.URL, "/") + "/api/agent/heartbeat"
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		a.log.Warn("pingPortal: erro criando request", zap.Error(err))
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+a.jwtToken)
+
+	resp, err := a.httpClient.Do(req)
+	if err != nil {
+		a.log.Warn("pingPortal: erro HTTP", zap.String("url", url), zap.Error(err))
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		a.log.Warn("pingPortal: resposta inesperada",
+			zap.String("url", url),
+			zap.Int("status", resp.StatusCode),
+		)
+		return
+	}
+
+	a.log.Debug("pingPortal: ok", zap.String("status", status))
 }
 
 func (a *AgentClient) publish(topic string, payload []byte, qos byte) {
@@ -249,5 +359,6 @@ func (a *AgentClient) Disconnect() {
 		a.publishStatus("offline")
 		a.client.Disconnect(2000)
 	}
+	a.pingPortal("offline")
 	a.log.Info("MQTT desconectado")
 }

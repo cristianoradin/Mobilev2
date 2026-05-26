@@ -1,7 +1,8 @@
 import { RefreshCw, AlertTriangle, WifiOff } from 'lucide-react'
 import { DynamicChart } from '@/components/charts/DynamicChart'
-import { Card }   from '@/components/ui/Card'
-import { Badge }  from '@/components/ui/Badge'
+import { Card }         from '@/components/ui/Card'
+import { Badge }        from '@/components/ui/Badge'
+import { ScreenHeader } from '@/components/ui/ScreenHeader'
 import { useChartData } from '@/hooks/useChartData'
 import type { ChartMetadata } from '@/lib/contracts'
 
@@ -50,19 +51,18 @@ export function EstoqueScreen() {
 
   return (
     <div className="pt-4 space-y-5">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-ink">Estoque</h1>
-          <p className="text-ink/40 text-sm">{offline ? 'Agente offline' : 'Nível dos tanques'}</p>
-        </div>
-        <button
-          onClick={() => refresh(true)}
-          className="p-2.5 bg-surface border border-rim rounded-xl transition-all active:scale-90"
-        >
-          <RefreshCw size={16} className={`text-ink/60 ${loading ? 'animate-spin' : ''}`} />
-        </button>
-      </div>
+      <ScreenHeader
+        title="Estoque"
+        subtitle={offline ? 'Agente offline' : 'Nível dos tanques'}
+        action={
+          <button
+            onClick={() => refresh(true)}
+            className="p-2.5 bg-surface rounded-xl shadow-[0_1px_4px_rgba(0,0,0,0.06)] border border-rim/40 transition-all active:scale-90"
+          >
+            <RefreshCw size={16} className={`text-ink/60 ${loading ? 'animate-spin' : ''}`} />
+          </button>
+        }
+      />
 
       {/* Agente offline */}
       {offline && (

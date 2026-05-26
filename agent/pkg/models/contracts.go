@@ -26,10 +26,11 @@ const (
 type CommandType string
 
 const (
-	CmdReadQuery    CommandType = "READ_QUERY"
-	CmdWriteCmd     CommandType = "WRITE_COMMAND"
-	CmdSyncTemplate CommandType = "SYNC_TEMPLATE"
-	CmdUpdateAgent  CommandType = "UPDATE_AGENT"
+	CmdReadQuery        CommandType = "READ_QUERY"
+	CmdWriteCmd         CommandType = "WRITE_COMMAND"
+	CmdSyncTemplate     CommandType = "SYNC_TEMPLATE"
+	CmdUpdateAgent      CommandType = "UPDATE_AGENT"
+	CmdDiscoverEmpresas CommandType = "DISCOVER_EMPRESAS"
 )
 
 // WriteSubtype subtipos de comandos de escrita
@@ -50,6 +51,11 @@ type MQTTCommand struct {
 	ForceRefresh  bool          `json:"force_refresh,omitempty"`
 	Timestamp     int64         `json:"timestamp"`
 	ResponseTopic string        `json:"response_topic,omitempty"`
+
+	// Filtro de período (ISO date "YYYY-MM-DD" ou datetime "YYYY-MM-DD HH:MM:SS")
+	// Usado para substituir :data_inicio/:data_fim e :datetime_inicio/:datetime_fim no SQL
+	DateFrom string `json:"date_from,omitempty"`
+	DateTo   string `json:"date_to,omitempty"`
 
 	// Campos para WRITE_COMMAND
 	Subtype WriteSubtype           `json:"subtype,omitempty"`

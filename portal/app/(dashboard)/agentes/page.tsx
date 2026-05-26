@@ -1,15 +1,17 @@
 'use client'
-import { useState, useEffect, useRef } from 'react'
-import { TopBar } from '@/components/layout/TopBar'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { TopBar }    from '@/components/layout/TopBar'
 import { Card, CardBody } from '@/components/ui/Card'
-import { Button } from '@/components/ui/Button'
-import { Badge } from '@/components/ui/Badge'
+import { Button }    from '@/components/ui/Button'
+import { Badge }     from '@/components/ui/Badge'
 import { useToast, Toaster } from '@/components/ui/Toast'
+import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import {
-  Upload, RefreshCw, Send, Package, CheckCircle, Globe,
-  Users, Cpu, FileCode,
+  Upload, RefreshCw, Send, Package, CheckCircle,
+  Cpu, FileCode, AlertTriangle, WifiOff, Wifi, Clock,
 } from 'lucide-react'
 
+// ── Tipos ─────────────────────────────────────────────────────────────────────
 interface Release {
   filename: string
   version:  string
@@ -20,45 +22,91 @@ interface Release {
   url:      string
 }
 
-interface Cliente {
-  id:   string
-  nome: string
-  cnpj: string
-  ativo: boolean
+interface ClienteStatus {
+  clienteId:       string
+  clienteNome:     string
+  cnpj:            string
+  ativo:           boolean
+  versao:          string | null
+  status:          'online' | 'offline' | 'degraded' | null
+  ultimoHeartbeat: string | null
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function formatBytes(bytes: number) {
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+}
+
+function timeAgo(iso: string | null): string {
+  if (!iso) return '—'
+  const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
+  if (diff < 60)   return `${diff}s atrás`
+  if (diff < 3600) return `${Math.floor(diff / 60)}min atrás`
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h atrás`
+  return `${Math.floor(diff / 86400)}d atrás`
+}
+
+function compareVersions(a: string, b: string): number {
+  const pa = a.split('.').map(Number)
+  const pb = b.split('.').map(Number)
+  for (let i = 0; i < 3; i++) {
+    if ((pa[i] ?? 0) > (pb[i] ?? 0)) return 1
+    if ((pa[i] ?? 0) < (pb[i] ?? 0)) return -1
+  }
+  return 0
+}
+
+// ── Página ────────────────────────────────────────────────────────────────────
 export default function AgentesPage() {
   const { toasts, toast, dismiss } = useToast()
 
-  const [releases,   setReleases]   = useState<Release[]>([])
-  const [clientes,   setClientes]   = useState<Cliente[]>([])
-  const [carregando, setCarregando] = useState(true)
+  const [releases,     setReleases]     = useState<Release[]>([])
+  const [clientes,     setClientes]     = useState<ClienteStatus[]>([])
+  const [carregando,   setCarregando]   = useState(true)
 
-  // Upload state
+  // Upload
   const [uploading,  setUploading]  = useState(false)
   const [version,    setVersion]    = useState('')
   const [file,       setFile]       = useState<File | null>(null)
   const fileRef                     = useRef<HTMLInputElement>(null)
 
-  // Update state
+  // Dispatch
   const [selectedRelease, setSelectedRelease] = useState<Release | null>(null)
   const [targetCnpj,      setTargetCnpj]      = useState<string>('todos')
   const [sending,         setSending]          = useState(false)
+  const [confirmOpen,     setConfirmOpen]      = useState(false)
 
-  useEffect(() => {
+  const latestVersion = releases[0]?.version ?? null
+
+  const loadData = useCallback(() => {
+    setCarregando(true)
     Promise.all([
       fetch('/api/agent/release').then(r => r.json()),
-      fetch('/api/clientes').then(r => r.json()),
+      fetch('/api/agent/status').then(r => r.json()),
     ])
-      .then(([rel, cli]: [{ releases: Release[] }, { clientes: Cliente[] }]) => {
-        setReleases(rel.releases ?? [])
-        setClientes((cli.clientes ?? []).filter(c => c.ativo))
-        // Seleciona automaticamente a release mais recente
-        if (rel.releases?.[0]) setSelectedRelease(rel.releases[0])
+      .then(([rel, sta]: [{ releases: Release[] }, { clientes: ClienteStatus[] }]) => {
+        const rels = rel.releases ?? []
+        setReleases(rels)
+        setClientes(sta.clientes ?? [])
+        if (rels[0]) setSelectedRelease(rels[0])
       })
       .catch(() => toast('Erro ao carregar dados', 'error'))
       .finally(() => setCarregando(false))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => { loadData() }, [loadData])
+
+  // Auto-refresh do status a cada 30s
+  useEffect(() => {
+    const id = setInterval(() => {
+      fetch('/api/agent/status')
+        .then(r => r.json())
+        .then((d: { clientes: ClienteStatus[] }) => setClientes(d.clientes ?? []))
+        .catch(() => {})
+    }, 30_000)
+    return () => clearInterval(id)
+  }, [])
 
   async function handleUpload() {
     if (!file || !version.trim()) {
@@ -80,11 +128,7 @@ export default function AgentesPage() {
       toast(`Binário ${data.filename} enviado com sucesso`, 'success')
       setFile(null); setVersion('')
       if (fileRef.current) fileRef.current.value = ''
-
-      // Atualiza lista de releases
-      const updated = await fetch('/api/agent/release').then(r => r.json()) as { releases: Release[] }
-      setReleases(updated.releases ?? [])
-      if (updated.releases?.[0]) setSelectedRelease(updated.releases[0])
+      loadData()
     } catch {
       toast('Erro ao enviar arquivo', 'error')
     } finally {
@@ -94,13 +138,12 @@ export default function AgentesPage() {
 
   async function handleDispatch() {
     if (!selectedRelease) { toast('Selecione uma versão para enviar', 'warning'); return }
+    setConfirmOpen(true)
+  }
 
-    const target = targetCnpj === 'todos'
-      ? `todos os clientes ativos (${clientes.length})`
-      : clientes.find(c => c.cnpj.replace(/\D/g, '') === targetCnpj)?.nome ?? targetCnpj
-
-    if (!confirm(`Enviar atualização ${selectedRelease.version} para ${target}?`)) return
-
+  async function doDispatch() {
+    setConfirmOpen(false)
+    if (!selectedRelease) return
     setSending(true)
     try {
       const body: Record<string, string> = {
@@ -122,7 +165,6 @@ export default function AgentesPage() {
       const msg = data.total !== undefined
         ? `Comando enviado: ${data.sent}/${data.total} agentes alcançados`
         : 'Comando enviado com sucesso'
-
       toast(msg, data.sent! > 0 ? 'success' : 'warning')
     } catch {
       toast('Erro de conexão', 'error')
@@ -131,24 +173,23 @@ export default function AgentesPage() {
     }
   }
 
-  function formatBytes(bytes: number) {
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
-    return `${(bytes / 1024 / 1024).toFixed(1)} MB`
-  }
+  // ── Estatísticas rápidas ─────────────────────────────────────────────────────
+  const total      = clientes.length
+  const online     = clientes.filter(c => c.status === 'online').length
+  const atualizados = clientes.filter(c => c.versao && latestVersion && compareVersions(c.versao, latestVersion) === 0).length
+  const desatualizados = clientes.filter(c => c.versao && latestVersion && compareVersions(c.versao, latestVersion) < 0).length
+  const semAgente  = clientes.filter(c => !c.versao).length
 
   return (
     <div>
-      <TopBar
-        title="Agentes"
-        subtitle="Gerenciar e atualizar o agente local nos postos"
-      />
+      <TopBar title="Agentes" subtitle="Gerenciar e atualizar o agente local nos postos" />
 
-      <div className="p-8 grid grid-cols-2 gap-6 items-start">
+      <div className="p-8 space-y-6">
 
-        {/* ── Coluna esq: Upload de binário + Disparar update ─────────────── */}
-        <div className="space-y-5">
+        {/* ── Linha superior: Upload + Dispatch ──────────────────────────────── */}
+        <div className="grid grid-cols-2 gap-6">
 
-          {/* Upload de nova release */}
+          {/* Upload */}
           <Card>
             <CardBody>
               <div className="flex items-center gap-2 mb-5">
@@ -156,6 +197,9 @@ export default function AgentesPage() {
                   <Upload size={15} className="text-[#009c3b]" />
                 </div>
                 <p className="text-white font-semibold text-sm">Upload de Nova Versão</p>
+                {releases[0] && (
+                  <Badge variant="success" className="ml-auto">Atual: v{releases[0].version}</Badge>
+                )}
               </div>
 
               <div className="mb-4">
@@ -163,7 +207,7 @@ export default function AgentesPage() {
                 <input
                   value={version}
                   onChange={e => setVersion(e.target.value)}
-                  placeholder="ex: 1.1.0"
+                  placeholder="ex: 1.2.0"
                   className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-white/25 transition-all"
                 />
               </div>
@@ -176,13 +220,8 @@ export default function AgentesPage() {
                   }`}
                   onClick={() => fileRef.current?.click()}
                 >
-                  <input
-                    ref={fileRef}
-                    type="file"
-                    accept=".exe"
-                    className="hidden"
-                    onChange={e => setFile(e.target.files?.[0] ?? null)}
-                  />
+                  <input ref={fileRef} type="file" accept=".exe" className="hidden"
+                    onChange={e => setFile(e.target.files?.[0] ?? null)} />
                   {file ? (
                     <>
                       <CheckCircle size={20} className="text-[#009c3b] mx-auto mb-2" />
@@ -193,24 +232,19 @@ export default function AgentesPage() {
                     <>
                       <FileCode size={20} className="text-white/25 mx-auto mb-2" />
                       <p className="text-white/50 text-sm">Clique para selecionar o .exe</p>
-                      <p className="text-white/25 text-xs mt-1">sga-agent-{version || 'x.x.x'}-windows-amd64.exe</p>
                     </>
                   )}
                 </div>
               </div>
 
-              <Button
-                className="w-full justify-center"
-                loading={uploading}
-                disabled={!file || !version.trim()}
-                onClick={handleUpload}
-              >
+              <Button className="w-full justify-center" loading={uploading}
+                disabled={!file || !version.trim()} onClick={handleUpload}>
                 <Upload size={14} />Enviar Binário
               </Button>
             </CardBody>
           </Card>
 
-          {/* Disparar atualização */}
+          {/* Dispatch */}
           <Card>
             <CardBody>
               <div className="flex items-center gap-2 mb-5">
@@ -220,17 +254,14 @@ export default function AgentesPage() {
                 <p className="text-white font-semibold text-sm">Disparar Atualização</p>
               </div>
 
-              {/* Seleciona versão */}
               <div className="mb-4">
                 <label className="block text-white/50 text-xs mb-1.5">Versão a instalar</label>
                 {releases.length === 0 ? (
-                  <p className="text-white/30 text-xs py-2">Nenhuma versão disponível — faça upload primeiro</p>
+                  <p className="text-white/30 text-xs py-2">Nenhuma versão — faça upload primeiro</p>
                 ) : (
-                  <select
-                    value={selectedRelease?.filename ?? ''}
+                  <select value={selectedRelease?.filename ?? ''}
                     onChange={e => setSelectedRelease(releases.find(r => r.filename === e.target.value) ?? null)}
-                    className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-white/25 transition-all"
-                  >
+                    className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-white/25 transition-all">
                     {releases.map(r => (
                       <option key={r.filename} value={r.filename}>
                         v{r.version} — {r.os}/{r.arch} ({formatBytes(r.size)})
@@ -240,39 +271,31 @@ export default function AgentesPage() {
                 )}
               </div>
 
-              {/* SHA256 preview */}
               {selectedRelease && (
                 <div className="bg-black/30 rounded-lg p-3 mb-4">
                   <p className="text-white/30 text-[10px] uppercase tracking-wider mb-1">SHA256</p>
                   <code className="text-green-400/70 text-[10px] font-mono break-all">
-                    {selectedRelease.sha256}
+                    {selectedRelease.sha256.slice(0, 32)}…
                   </code>
                 </div>
               )}
 
-              {/* Seleciona destino */}
               <div className="mb-5">
                 <label className="block text-white/50 text-xs mb-1.5">Enviar para</label>
-                <select
-                  value={targetCnpj}
-                  onChange={e => setTargetCnpj(e.target.value)}
-                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-white/25 transition-all"
-                >
+                <select value={targetCnpj} onChange={e => setTargetCnpj(e.target.value)}
+                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-white/25 transition-all">
                   <option value="todos">🌐 Todos os clientes ativos ({clientes.length})</option>
                   {clientes.map(c => (
-                    <option key={c.id} value={c.cnpj.replace(/\D/g, '')}>
-                      {c.nome}
+                    <option key={c.clienteId} value={c.cnpj.replace(/\D/g, '')}>
+                      {c.clienteNome}
+                      {c.versao ? ` — v${c.versao}` : ' — sem agente'}
                     </option>
                   ))}
                 </select>
               </div>
 
-              <Button
-                className="w-full justify-center"
-                loading={sending}
-                disabled={!selectedRelease || clientes.length === 0}
-                onClick={handleDispatch}
-              >
+              <Button className="w-full justify-center" loading={sending}
+                disabled={!selectedRelease || clientes.length === 0} onClick={handleDispatch}>
                 <RefreshCw size={14} />
                 {targetCnpj === 'todos' ? 'Atualizar Todos' : 'Atualizar Cliente'}
               </Button>
@@ -280,80 +303,174 @@ export default function AgentesPage() {
           </Card>
         </div>
 
-        {/* ── Coluna dir: Versões disponíveis ─────────────────────────────── */}
+        {/* ── Painel de status dos clientes ──────────────────────────────────── */}
         <div>
-          <p className="text-white/40 text-xs uppercase tracking-wider font-semibold mb-3">
-            Versões Disponíveis
-          </p>
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-white/40 text-xs uppercase tracking-wider font-semibold">
+              Status dos Agentes
+            </p>
+            <button onClick={loadData}
+              className="flex items-center gap-1.5 text-white/30 hover:text-white/60 text-xs transition-colors">
+              <RefreshCw size={11} />Atualizar
+            </button>
+          </div>
 
+          {/* Cards de resumo */}
+          <div className="grid grid-cols-4 gap-3 mb-4">
+            {[
+              { label: 'Total',          value: total,          color: 'text-white/60',   bg: 'bg-white/5' },
+              { label: 'Online',         value: online,         color: 'text-[#009c3b]',  bg: 'bg-[#009c3b]/10' },
+              { label: 'Atualizados',    value: atualizados,    color: 'text-blue-400',   bg: 'bg-blue-500/10' },
+              { label: 'Desatualizados', value: desatualizados + semAgente, color: 'text-yellow-400', bg: 'bg-yellow-400/10' },
+            ].map(s => (
+              <div key={s.label} className={`${s.bg} border border-white/8 rounded-xl p-4 text-center`}>
+                <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
+                <p className="text-white/40 text-xs mt-0.5">{s.label}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Tabela de clientes */}
           {carregando ? (
             <div className="flex items-center justify-center py-12">
               <div className="w-6 h-6 border-2 border-white/20 border-t-white/70 rounded-full animate-spin" />
             </div>
-          ) : releases.length === 0 ? (
-            <Card>
-              <CardBody>
-                <div className="py-8 text-center">
-                  <Package size={28} className="text-white/15 mx-auto mb-3" />
-                  <p className="text-white/30 text-sm">Nenhuma versão disponível</p>
-                  <p className="text-white/20 text-xs mt-1">Faça upload de um binário para começar</p>
-                </div>
-              </CardBody>
-            </Card>
+          ) : clientes.length === 0 ? (
+            <Card><CardBody>
+              <div className="py-8 text-center">
+                <Package size={28} className="text-white/15 mx-auto mb-3" />
+                <p className="text-white/30 text-sm">Nenhum cliente ativo</p>
+              </div>
+            </CardBody></Card>
           ) : (
-            <div className="space-y-3">
-              {releases.map((r, idx) => (
-                <Card
-                  key={r.filename}
-                  className={selectedRelease?.filename === r.filename ? 'ring-1 ring-[#009c3b]/40' : ''}
-                >
-                  <CardBody>
-                    <div
-                      className="flex items-start gap-3 cursor-pointer"
-                      onClick={() => setSelectedRelease(r)}
-                    >
-                      <div className="w-9 h-9 bg-white/5 border border-white/10 rounded-xl flex items-center justify-center flex-shrink-0">
-                        <Cpu size={16} className="text-white/50" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1 flex-wrap">
-                          <p className="text-white font-semibold text-sm">v{r.version}</p>
-                          {idx === 0 && <Badge variant="success">Mais recente</Badge>}
-                          <Badge variant="default">{r.os}/{r.arch}</Badge>
-                        </div>
-                        <p className="text-white/40 text-xs mb-2">{r.filename}</p>
-                        <div className="flex items-center gap-3 text-[10px] text-white/30">
-                          <span>{formatBytes(r.size)}</span>
-                          <span className="font-mono text-green-400/50 truncate max-w-[180px]">
-                            {r.sha256.slice(0, 16)}…
-                          </span>
-                        </div>
-                      </div>
-                      {selectedRelease?.filename === r.filename && (
-                        <CheckCircle size={16} className="text-[#009c3b] flex-shrink-0" />
-                      )}
-                    </div>
-                  </CardBody>
-                </Card>
-              ))}
-            </div>
-          )}
+            <Card>
+              <div className="divide-y divide-white/6">
+                {clientes.map(c => {
+                  const isOnline    = c.status === 'online'
+                  const hasAgent    = !!c.versao
+                  const isUpToDate  = hasAgent && latestVersion
+                    ? compareVersions(c.versao!, latestVersion) === 0
+                    : false
+                  const isOutdated  = hasAgent && latestVersion
+                    ? compareVersions(c.versao!, latestVersion) < 0
+                    : false
 
-          {/* Info sobre o fluxo */}
-          <div className="mt-5 bg-white/3 border border-white/8 rounded-xl p-4">
-            <p className="text-white/40 text-xs font-semibold mb-2 uppercase tracking-wider">Como funciona</p>
-            <ol className="text-white/30 text-xs space-y-1.5 list-decimal list-inside">
-              <li>Faça upload do novo executável compilado para Windows</li>
-              <li>Selecione a versão e o destino (todos ou um cliente)</li>
-              <li>O portal publica o comando <code className="text-green-400/60">UPDATE_AGENT</code> via MQTT</li>
-              <li>O agente baixa, verifica o SHA256 e se substitui atomicamente</li>
-              <li>O serviço Windows reinicia automaticamente com a nova versão</li>
-            </ol>
-          </div>
+                  return (
+                    <div key={c.clienteId} className="flex items-center gap-4 px-5 py-4">
+                      {/* Status dot */}
+                      <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
+                        !hasAgent  ? 'bg-white/20' :
+                        isOnline   ? 'bg-[#009c3b] shadow-sm shadow-[#009c3b]/50' :
+                                     'bg-red-400'
+                      }`} />
+
+                      {/* Nome + CNPJ */}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white text-sm font-medium truncate">{c.clienteNome}</p>
+                        <p className="text-white/30 text-xs font-mono">{c.cnpj}</p>
+                      </div>
+
+                      {/* Versão */}
+                      <div className="text-right">
+                        {!hasAgent ? (
+                          <Badge variant="default">Sem agente</Badge>
+                        ) : isUpToDate ? (
+                          <Badge variant="success">v{c.versao}</Badge>
+                        ) : isOutdated ? (
+                          <div className="flex items-center gap-1.5">
+                            <AlertTriangle size={12} className="text-yellow-400" />
+                            <Badge variant="warning">v{c.versao}</Badge>
+                          </div>
+                        ) : (
+                          <Badge variant="default">v{c.versao}</Badge>
+                        )}
+                      </div>
+
+                      {/* Status online/offline */}
+                      <div className="w-20 text-right">
+                        {!hasAgent ? (
+                          <span className="text-white/20 text-xs">—</span>
+                        ) : isOnline ? (
+                          <div className="flex items-center justify-end gap-1 text-[#009c3b]">
+                            <Wifi size={12} />
+                            <span className="text-xs">online</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-end gap-1 text-red-400">
+                            <WifiOff size={12} />
+                            <span className="text-xs">offline</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Último heartbeat */}
+                      <div className="w-24 text-right">
+                        <div className="flex items-center justify-end gap-1 text-white/30">
+                          <Clock size={10} />
+                          <span className="text-xs">{timeAgo(c.ultimoHeartbeat)}</span>
+                        </div>
+                      </div>
+
+                      {/* Botão de atualização rápida */}
+                      {hasAgent && isOutdated && latestVersion && (
+                        <button
+                          onClick={() => {
+                            setTargetCnpj(c.cnpj.replace(/\D/g, ''))
+                            setSelectedRelease(releases[0] ?? null)
+                            setConfirmOpen(true)
+                          }}
+                          className="flex items-center gap-1 px-2.5 py-1 bg-yellow-400/10 border border-yellow-400/25 rounded-lg text-yellow-400 text-xs hover:bg-yellow-400/20 transition-colors"
+                        >
+                          <RefreshCw size={10} />
+                          v{latestVersion}
+                        </button>
+                      )}
+                      {(!hasAgent || isUpToDate) && <div className="w-16" />}
+                    </div>
+                  )
+                })}
+              </div>
+            </Card>
+          )}
         </div>
+
+        {/* Info */}
+        <div className="bg-white/3 border border-white/8 rounded-xl p-4">
+          <p className="text-white/40 text-xs font-semibold mb-2 uppercase tracking-wider">Como funciona</p>
+          <ol className="text-white/30 text-xs space-y-1.5 list-decimal list-inside">
+            <li>Faça upload do novo executável compilado para Windows</li>
+            <li>Selecione a versão e o destino (todos ou um cliente)</li>
+            <li>O portal publica o comando <code className="text-green-400/60">UPDATE_AGENT</code> via MQTT</li>
+            <li>O agente baixa, verifica o SHA256 e se substitui atomicamente</li>
+            <li>O serviço Windows reinicia automaticamente com a nova versão</li>
+          </ol>
+        </div>
+
       </div>
 
       <Toaster toasts={toasts} onDismiss={dismiss} />
+
+      {confirmOpen && selectedRelease && (
+        <ConfirmModal
+          title="Confirmar Atualização"
+          message={
+            <span>
+              Enviar versão <strong className="text-white">v{selectedRelease.version}</strong> para{' '}
+              <strong className="text-white">
+                {targetCnpj === 'todos'
+                  ? `todos os clientes ativos (${clientes.length})`
+                  : (clientes.find(c => c.cnpj.replace(/\D/g, '') === targetCnpj)?.clienteNome ?? targetCnpj)}
+              </strong>?
+              <span className="text-white/40 text-xs mt-1 block">
+                O agente baixará e aplicará a atualização automaticamente.
+              </span>
+            </span>
+          }
+          confirmLabel="Enviar Atualização"
+          onConfirm={doDispatch}
+          onCancel={() => setConfirmOpen(false)}
+        />
+      )}
     </div>
   )
 }

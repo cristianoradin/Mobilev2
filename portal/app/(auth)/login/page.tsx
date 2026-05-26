@@ -41,11 +41,11 @@ export default function LoginPage() {
       {/* Logo */}
       <div className="flex flex-col items-center mb-8">
         <Image
-          src="/logo.png"
+          src="/logo-vertical.png"
           alt="SGA Petro"
           width={200}
-          height={54}
-          className="h-14 w-auto object-contain mb-3"
+          height={200}
+          className="h-32 w-auto object-contain mb-3"
           priority
         />
         <p className="text-white/40 text-sm">Portal Administrativo</p>

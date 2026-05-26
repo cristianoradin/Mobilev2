@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { listClientesSafe, createClienteSafe } from '@/lib/repositories/clientes'
 import type { Plano } from '@/lib/types'
+import { writeAudit } from '@/lib/audit'
 
 export async function GET() {
   const clientes = await listClientesSafe()
@@ -11,14 +12,15 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
 
-    const { nome, cnpj, email, telefone, plano, empresa_nome, empresa_cnpj } = body as {
-      nome:          string
-      cnpj:          string
-      email:         string
-      telefone?:     string
-      plano:         Plano
-      empresa_nome:  string
-      empresa_cnpj?: string
+    const { nome, cnpj, email, telefone, plano, empresa_nome, empresa_cnpj, empresa_codigo_erp } = body as {
+      nome:               string
+      cnpj:               string
+      email:              string
+      telefone?:          string
+      plano:              Plano
+      empresa_nome:       string
+      empresa_cnpj?:      string
+      empresa_codigo_erp?: number   // código ERP local (empcodigo) — obrigatório para dados funcionarem
     }
 
     // Validação básica
@@ -31,15 +33,17 @@ export async function POST(req: NextRequest) {
     }
 
     const cliente = await createClienteSafe({
-      nome:          nome.trim(),
-      cnpj:          cnpj.trim(),
-      email:         email.trim(),
-      telefone:      telefone?.trim() || undefined,
+      nome:               nome.trim(),
+      cnpj:               cnpj.trim(),
+      email:              email.trim(),
+      telefone:           telefone?.trim() || undefined,
       plano,
-      empresa_nome:  empresa_nome.trim(),
-      empresa_cnpj:  empresa_cnpj?.trim() || undefined,
+      empresa_nome:       empresa_nome.trim(),
+      empresa_cnpj:       empresa_cnpj?.trim() || undefined,
+      empresa_codigo_erp: empresa_codigo_erp ? Number(empresa_codigo_erp) : undefined,
     })
 
+    void writeAudit(req, { acao: 'cliente.create', recurso: nome.trim(), status: 'ok', cliente_id: cliente.id })
     return NextResponse.json({ cliente }, { status: 201 })
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)

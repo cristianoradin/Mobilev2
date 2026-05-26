@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { DollarSign, Check, X, AlertTriangle } from 'lucide-react'
-import { Card }       from '@/components/ui/Card'
-import { useCommand } from '@/hooks/useCommand'
+import { Card }         from '@/components/ui/Card'
+import { ScreenHeader } from '@/components/ui/ScreenHeader'
+import { useCommand }   from '@/hooks/useCommand'
 import { useAuth }    from '@/core/auth/AuthContext'
 import { cn }         from '@/lib/cn'
 
@@ -41,11 +42,7 @@ export function TrocaPrecoScreen() {
 
   return (
     <div className="pt-4 space-y-5">
-      {/* Header */}
-      <div>
-        <h1 className="text-xl font-bold text-ink">Troca de Preço</h1>
-        <p className="text-ink/40 text-sm">Atualização remota de valores</p>
-      </div>
+      <ScreenHeader title="Troca de Preço" subtitle="Atualização remota de valores" />
 
       {!podeEditar && (
         <div className="bg-yellow/10 border border-yellow/30 rounded-2xl p-4 flex items-start gap-3">

@@ -1,11 +1,12 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { TopBar } from '@/components/layout/TopBar'
 import { Card, CardBody, CardHeader } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
+import { Button } from '@/components/ui/Button'
 import { DateRangePicker } from '@/components/ui/DateRangePicker'
 import type { DateRange } from '@/components/ui/DateRangePicker'
-import { Users, BarChart3, Activity, FileCheck, Wifi, WifiOff, Clock, Loader2, CircleDot } from 'lucide-react'
+import { Users, BarChart3, Activity, FileCheck, Wifi, WifiOff, Clock, Loader2, CircleDot, AlertTriangle, RefreshCw } from 'lucide-react'
 
 // ── Tipos ────────────────────────────────────────────────────────────────────
 interface Kpis {
@@ -80,14 +81,21 @@ export default function DashboardPage() {
   const [error,   setError]   = useState(false)
   const [online,  setOnline]  = useState<AdminOnline[]>([])
 
-  useEffect(() => {
+  const loadStats = useCallback(() => {
     setLoading(true)
     setError(false)
     fetch('/api/dashboard/stats')
-      .then(r => r.json())
-      .then((d: Stats) => setStats(d))
+      .then(async r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`)
+        return r.json() as Promise<Stats>
+      })
+      .then(d => setStats(d))
       .catch(() => setError(true))
       .finally(() => setLoading(false))
+  }, [])
+
+  useEffect(() => {
+    loadStats()
 
     // Busca admins online
     const carregarOnline = () =>
@@ -98,7 +106,7 @@ export default function DashboardPage() {
     carregarOnline()
     const id = setInterval(carregarOnline, 30_000) // atualiza a cada 30s
     return () => clearInterval(id)
-  }, [])
+  }, [loadStats])
 
   const fmtPeriod = () => {
     if (!period.from || !period.to) return ''
@@ -156,6 +164,23 @@ export default function DashboardPage() {
 
       <div className="p-8 space-y-8">
 
+        {/* ── Banner de erro ── */}
+        {error && (
+          <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 flex items-center gap-3">
+            <AlertTriangle className="text-red-400 shrink-0" size={20} />
+            <div className="flex-1">
+              <div className="font-semibold text-red-300">Falha ao carregar dados do dashboard</div>
+              <div className="text-white/50 text-xs">
+                A API <code className="font-mono">/api/dashboard/stats</code> não respondeu. Pode ser instabilidade do banco ou indisponibilidade temporária.
+              </div>
+            </div>
+            <Button size="sm" variant="secondary" onClick={loadStats} disabled={loading}>
+              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+              Tentar novamente
+            </Button>
+          </div>
+        )}
+
         {/* ── KPIs ── */}
         <div className="grid grid-cols-4 gap-5">
           {loading ? (
@@ -167,9 +192,11 @@ export default function DashboardPage() {
               </Card>
             ))
           ) : error ? (
-            <div className="col-span-4 text-white/40 text-sm text-center py-4">
-              Erro ao carregar estatísticas
-            </div>
+            Array.from({ length: 4 }).map((_, i) => (
+              <Card key={i} className="opacity-40">
+                <CardBody className="flex items-center justify-center py-8 text-white/30 text-xs">—</CardBody>
+              </Card>
+            ))
           ) : kpis.map(({ label, value, delta, icon: Icon, color }) => (
             <Card key={label}>
               <CardBody className="flex items-start gap-4">
@@ -204,6 +231,11 @@ export default function DashboardPage() {
               {loading ? (
                 <div className="flex items-center justify-center py-12">
                   <Loader2 size={20} className="animate-spin text-white/40" />
+                </div>
+              ) : error ? (
+                <div className="px-6 py-10 text-center">
+                  <AlertTriangle size={24} className="text-red-400/60 mx-auto mb-2" />
+                  <p className="text-white/40 text-sm">Sem dados (API indisponível)</p>
                 </div>
               ) : !stats || stats.agentes.length === 0 ? (
                 <div className="px-6 py-10 text-center">
@@ -298,6 +330,11 @@ export default function DashboardPage() {
                 {loading ? (
                   <div className="flex items-center justify-center py-8">
                     <Loader2 size={18} className="animate-spin text-white/40" />
+                  </div>
+                ) : error ? (
+                  <div className="py-6 text-center">
+                    <AlertTriangle size={18} className="text-red-400/60 mx-auto mb-1" />
+                    <p className="text-white/35 text-xs">Indisponível</p>
                   </div>
                 ) : !stats || stats.atividade.length === 0 ? (
                   <div className="py-6 text-center">

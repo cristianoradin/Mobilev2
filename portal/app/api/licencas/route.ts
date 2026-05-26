@@ -4,6 +4,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
+import { writeAudit } from '@/lib/audit'
 
 export interface LicencaItem {
   id:              string | null   // licenca.id (null se cliente sem licença)
@@ -92,6 +93,7 @@ export async function POST(req: NextRequest) {
       )
       RETURNING id
     `
+    void writeAudit(req, { acao: 'licenca.create', recurso: body.plano, status: 'ok', cliente_id: body.cliente_id })
     return NextResponse.json({ ok: true, id: row.id })
   } catch (err) {
     console.error('[POST /api/licencas]', err)

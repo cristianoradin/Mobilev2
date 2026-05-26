@@ -7,9 +7,11 @@ import { Card, CardBody } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { LiberarModal, type LiberacaoState } from '@/components/ui/LiberarModal'
+import { GraficoTestModal } from '@/components/ui/GraficoTestModal'
 import { useToast, Toaster } from '@/components/ui/Toast'
 import { Plus, BarChart3, LineChart, PieChart, Gauge, TrendingUp, Edit2, Trash2, Copy,
-  TableProperties, Flame, Layers, MousePointerClick, Globe, Lock, Users, Fuel, Search } from 'lucide-react'
+  TableProperties, Flame, Layers, MousePointerClick, Globe, Lock, Users, Fuel, Search,
+  FlaskConical } from 'lucide-react'
 import type { ChartMetadata } from '@/lib/types'
 
 const ICON_MAP: Record<string, React.ElementType> = {
@@ -53,7 +55,8 @@ export default function GraficosPage() {
   const router = useRouter()
   const { toasts, toast, dismiss } = useToast()
   const [liberacoes, setLiberacoes] = useState<Record<string, LiberacaoState>>({})
-  const [modalItem, setModalItem] = useState<ChartMetadata | null>(null)
+  const [modalItem,   setModalItem]   = useState<ChartMetadata | null>(null)
+  const [testeItem,   setTesteItem]   = useState<ChartMetadata | null>(null)
   const [customGraficos, setCustomGraficos] = useState<ChartMetadata[]>([])
   const [carregando, setCarregando] = useState(true)
   const [duplicando, setDuplicando] = useState<string | null>(null)
@@ -206,11 +209,11 @@ export default function GraficosPage() {
 
                       <div className="flex items-center gap-3 text-xs text-white/30 mb-4">
                         {tmpl.chart_type === 'report'
-                          ? <span>Colunas: <span className="text-white/60">{tmpl.report_config?.columns.length ?? 0}</span></span>
+                          ? <span>Colunas: <span className="text-white/60">{tmpl.report_config?.columns?.length ?? 0}</span></span>
                           : tmpl.chart_type === 'kpi'
-                            ? <span>Métricas: <span className="text-white/60">{tmpl.kpi_config?.metrics.length ?? 0}</span></span>
+                            ? <span>Métricas: <span className="text-white/60">{tmpl.kpi_config?.metrics?.length ?? 0}</span></span>
                             : tmpl.chart_type === 'button'
-                              ? <span>Botões: <span className="text-white/60">{tmpl.button_config?.buttons.length ?? 0}</span></span>
+                              ? <span>Botões: <span className="text-white/60">{tmpl.button_config?.buttons?.length ?? 0}</span></span>
                               : <span>Tipo: <span className="text-white/60 capitalize">{tmpl.chart_type}</span></span>
                         }
                         {tmpl.chart_type !== 'button' && (
@@ -227,6 +230,13 @@ export default function GraficosPage() {
                       </div>
 
                       <div className="flex items-center gap-2">
+                        <Button
+                          variant="ghost" size="sm"
+                          title="Testar com dados reais"
+                          onClick={() => setTesteItem(tmpl)}
+                        >
+                          <FlaskConical size={12} />Testar
+                        </Button>
                         <Button
                           variant="secondary" size="sm"
                           onClick={() => router.push(`/graficos/novo?edit=${tmpl.id}`)}
@@ -279,6 +289,14 @@ export default function GraficosPage() {
 
       {/* Toast */}
       <Toaster toasts={toasts} onDismiss={dismiss} />
+
+      {/* Modal de teste PWA */}
+      {testeItem && (
+        <GraficoTestModal
+          template={testeItem}
+          onFechar={() => setTesteItem(null)}
+        />
+      )}
 
       {/* Modal de liberação */}
       {modalItem && (

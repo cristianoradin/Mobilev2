@@ -20,19 +20,30 @@ import (
 	"github.com/sga-petro/agent/internal/discount"
 )
 
+// LivenessProbe é uma interface mínima que algo (ex: watchdog) pode implementar
+// para responder /healthz com estado real do processo (não só "porta aberta").
+type LivenessProbe interface {
+	Healthy() bool
+	LastBeatAge() time.Duration
+}
+
 // Server é o servidor HTTP local do agente.
 type Server struct {
 	srv      *http.Server
 	desconto *discount.DescontoService
+	probe    LivenessProbe // pode ser nil — /healthz responde só "ok"
+	version  string
 	log      *zap.Logger
 }
 
 // New cria o servidor HTTP local na porta informada.
-func New(port int, descontoSvc *discount.DescontoService, log *zap.Logger) *Server {
-	s := &Server{desconto: descontoSvc, log: log}
+// Passe probe=nil se não tiver watchdog ainda — /healthz vira só ping.
+func New(port int, descontoSvc *discount.DescontoService, probe LivenessProbe, version string, log *zap.Logger) *Server {
+	s := &Server{desconto: descontoSvc, probe: probe, version: version, log: log}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health",               s.handleHealth)
+	mux.HandleFunc("/healthz",              s.handleHealthz)
 	mux.HandleFunc("/api/desconto/request", s.handleDescontoRequest)
 
 	s.srv = &http.Server{
@@ -75,6 +86,28 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(`{"status":"ok"}`))
+}
+
+// handleHealthz é a versão "deep" com status do watchdog. Retorna 503 se travado.
+func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	type out struct {
+		Status       string `json:"status"`
+		Version      string `json:"version"`
+		LastBeatAge  string `json:"last_beat_age,omitempty"`
+	}
+	r := out{Status: "ok", Version: s.version}
+	if s.probe != nil {
+		r.LastBeatAge = s.probe.LastBeatAge().Round(time.Second).String()
+		if !s.probe.Healthy() {
+			r.Status = "unhealthy"
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_ = json.NewEncoder(w).Encode(r)
+			return
+		}
+	}
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(r)
 }
 
 func (s *Server) handleDescontoRequest(w http.ResponseWriter, r *http.Request) {

@@ -1,0 +1,7 @@
+{
+  "version": "1.2.0",
+  "sha256": "9693bf7393528e119317a2402a99ea98aa6110f615bee49fce1c5c700c179db9",
+  "url": "/agent/sga-agent.exe",
+  "released_at": "2026-05-25T20:37:00Z",
+  "notes": "v1.2.0: poller automatico de updates (30min), watchdog detecta travamentos vivos, rotacao de log via lumberjack, panic recovery global, endpoint /healthz local"
+}

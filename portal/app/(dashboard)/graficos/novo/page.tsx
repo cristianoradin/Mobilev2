@@ -9,15 +9,22 @@ import { KpiPreview }      from '@/components/charts/KpiPreview'
 import { HeatmapPreview }  from '@/components/charts/HeatmapPreview'
 import { WaterfallPreview} from '@/components/charts/WaterfallPreview'
 import { ButtonPreview }   from '@/components/charts/ButtonPreview'
-import { TankPreview }    from '@/components/charts/TankPreview'
+import { TankPreview }       from '@/components/charts/TankPreview'
+import { MultiBlockPreview } from '@/components/charts/MultiBlockPreview'
+import { MultiblockEditor }  from '@/components/charts/MultiblockEditor'
+import { IconPicker }        from '@/components/charts/IconPicker'
 import { TopBar }  from '@/components/layout/TopBar'
 import { Button }  from '@/components/ui/Button'
 import { Input }   from '@/components/ui/Input'
+import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
+import { SqlDataTable }     from '@/components/ui/SqlDataTable'
+import { ChartSuggestions } from '@/components/charts/ChartSuggestions'
 import { cn }      from '@/lib/cn'
 import { ICON_NAMES, ICON_REGISTRY } from '@/lib/icons'
 import {
-  Save, Plus, Trash2, RefreshCw, Calendar, CalendarRange,
+  Save, Plus, Trash2, RefreshCw, Calendar, CalendarRange, GripVertical,
   TableProperties, BarChart3, Activity, Flame, Layers, MousePointerClick, Fuel,
+  Play, CheckCircle2, AlertCircle, Wand2, Wifi, WifiOff, ChevronDown,
 } from 'lucide-react'
 import { DateRangePicker } from '@/components/ui/DateRangePicker'
 import type { DateRange } from '@/components/ui/DateRangePicker'
@@ -46,6 +53,7 @@ const CHART_TYPES: { value: ChartType; label: string; icon: React.ElementType; c
   { value: 'waterfall', label: 'Waterfall', icon: BarChart3,          color: '#06b6d4' },
   { value: 'button',    label: 'Botões',    icon: MousePointerClick,  color: '#f43f5e' },
   { value: 'tank',      label: 'Tanques',   icon: Fuel,               color: '#009c3b' },
+  { value: 'multiblock',label: 'Multibloco',icon: Layers,             color: '#a855f7' },
 ]
 
 const ROLES: { value: UserRole; label: string }[] = [
@@ -130,9 +138,25 @@ const DEFAULT_TANK: TankConfig = {
 
 const DEFAULT_DATE_FILTER: TemplateDateFilter = {
   enabled:        false,
+  filter_type:    'date',
   param_inicio:   ':data_inicio',
   param_fim:      ':data_fim',
   default_preset: 'last_30d',
+}
+
+const DATE_FILTER_PRESETS: Record<'date' | 'datetime', { param_inicio: string; param_fim: string; label: string; hint: string }> = {
+  date: {
+    param_inicio: ':data_inicio',
+    param_fim:    ':data_fim',
+    label:        'Data (DD/MM/YYYY)',
+    hint:         'YYYY-MM-DD — ideal para campos DATE do PostgreSQL',
+  },
+  datetime: {
+    param_inicio: ':datetime_inicio',
+    param_fim:    ':datetime_fim',
+    label:        'Data + Hora (DD/MM/YYYY HH:MM:SS)',
+    hint:         'Início: 00:00:00 · Fim: 23:59:59 — ideal para campos TIMESTAMP',
+  },
 }
 
 const DATE_PRESETS: { value: DatePreset; label: string }[] = [
@@ -147,7 +171,7 @@ const DATE_PRESETS: { value: DatePreset; label: string }[] = [
 
 const DEFAULT_META: ChartMetadata = {
   id: '', nome: '', descricao: '',
-  categoria: 'vendas',
+  categoria: 'operacoes',
   chart_type: 'area',
   query:   { sql: '', refresh_seconds: 300, timeout_seconds: 30 },
   axes:    { x: { field: 'hora', label: 'Hora' }, y: [{ field: 'total', label: 'Total (R$)', color: '#009c3b' }] },
@@ -217,19 +241,62 @@ function IconPickerButton({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Sub-componente — linha de coluna do Relatório
+// Sub-componente — linha de coluna do Relatório (com drag-and-drop nativo HTML5)
 // ─────────────────────────────────────────────────────────────────────────────
 function ColRow({
-  col, index, total, onChange, onRemove,
+  col, index, total, onChange, onRemove, onMove,
+  dragOverIndex, setDragOverIndex,
+  draggingIndex, setDraggingIndex,
 }: {
   col:      ReportColumn
   index:    number
   total:    number
   onChange: (f: keyof ReportColumn, v: string) => void
   onRemove: () => void
+  onMove:   (from: number, to: number) => void
+  dragOverIndex: number | null
+  setDragOverIndex: (i: number | null) => void
+  draggingIndex:    number | null
+  setDraggingIndex: (i: number | null) => void
 }) {
+  const isDragging = draggingIndex === index
+  const isOver     = dragOverIndex === index && draggingIndex !== null && draggingIndex !== index
+  const indicateAbove = isOver && (draggingIndex! > index)
+  const indicateBelow = isOver && (draggingIndex! < index)
+
   return (
-    <div className="flex items-center gap-2 group/row">
+    <div
+      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDragOverIndex(index) }}
+      onDragLeave={() => { if (dragOverIndex === index) setDragOverIndex(null) }}
+      onDrop={(e) => {
+        e.preventDefault()
+        const from = Number(e.dataTransfer.getData('text/col-index'))
+        if (Number.isFinite(from) && from !== index) onMove(from, index)
+        setDragOverIndex(null)
+        setDraggingIndex(null)
+      }}
+      className={cn(
+        'flex items-center gap-2 group/row rounded-lg transition-all',
+        isDragging && 'opacity-40',
+        indicateAbove && 'border-t-2 border-t-[#009c3b]',
+        indicateBelow && 'border-b-2 border-b-[#009c3b]',
+      )}
+    >
+      {/* Drag handle */}
+      <span
+        draggable
+        onDragStart={(e) => {
+          e.dataTransfer.effectAllowed = 'move'
+          e.dataTransfer.setData('text/col-index', String(index))
+          setDraggingIndex(index)
+        }}
+        onDragEnd={() => { setDraggingIndex(null); setDragOverIndex(null) }}
+        className="cursor-grab active:cursor-grabbing text-white/25 hover:text-white/60 p-1 -ml-1 select-none"
+        title="Arrastar pra reordenar"
+      >
+        <GripVertical size={14} />
+      </span>
+
       <input
         value={col.field}
         onChange={e => onChange('field', e.target.value)}
@@ -281,6 +348,47 @@ function ColRow({
       >
         <Trash2 size={13} />
       </button>
+    </div>
+  )
+}
+
+// Wrapper que gerencia drag state pro reorder das colunas
+function ColListSortable({
+  cols, setRepCols, updateRepCol, removeRepCol,
+}: {
+  cols: ReportColumn[]
+  setRepCols: (cols: ReportColumn[]) => void
+  updateRepCol: (i: number, f: keyof ReportColumn, v: string) => void
+  removeRepCol: (i: number) => void
+}) {
+  const [draggingIndex, setDraggingIndex] = useState<number | null>(null)
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
+
+  function move(from: number, to: number) {
+    if (from === to || from < 0 || to < 0 || from >= cols.length || to >= cols.length) return
+    const next = [...cols]
+    const [item] = next.splice(from, 1)
+    next.splice(to, 0, item)
+    setRepCols(next)
+  }
+
+  return (
+    <div className="space-y-2">
+      {cols.map((col, i) => (
+        <ColRow
+          key={i}
+          col={col}
+          index={i}
+          total={cols.length}
+          onChange={(f, v) => updateRepCol(i, f, v)}
+          onRemove={() => removeRepCol(i)}
+          onMove={move}
+          dragOverIndex={dragOverIndex}
+          setDragOverIndex={setDragOverIndex}
+          draggingIndex={draggingIndex}
+          setDraggingIndex={setDraggingIndex}
+        />
+      ))}
     </div>
   )
 }
@@ -476,6 +584,25 @@ function NovoGraficoContent() {
   const [previewKey, setPreviewKey] = useState(0)
   const [loadingTemplate, setLoadingTemplate] = useState(false)
 
+  // ── SQL test state ──────────────────────────────────────────────────────────
+  const [sqlResult,  setSqlResult]  = useState<{
+    columns:       string[]
+    rows:          Record<string, unknown>[]
+    count:         number
+    empty?:        boolean
+    empresas_ids?: number[]
+    prepared_sql?: string
+    hint?:         string
+  } | null>(null)
+  const [sqlError,   setSqlError]   = useState<string | null>(null)
+  const [sqlRunning, setSqlRunning] = useState(false)
+
+  // ── Clientes online para testar via agente ───────────────────────────────────
+  type ClienteOnline = { id: string; nome: string; agenteStatus?: string; agente_status?: string }
+  const [clientes,        setClientes]        = useState<ClienteOnline[]>([])
+  const [selectedCliente, setSelectedCliente] = useState<string>('')
+  const [agentRunning,    setAgentRunning]    = useState(false)
+
   // ── Carrega template existente para editar ou duplicar ───────────────────
   useEffect(() => {
     const id = editId ?? fromId
@@ -599,7 +726,20 @@ function NovoGraficoContent() {
   const dateFlt = meta.date_filter ?? DEFAULT_DATE_FILTER
 
   function setDateFilter(patch: Partial<TemplateDateFilter>) {
-    setMeta(prev => ({ ...prev, date_filter: { ...(prev.date_filter ?? DEFAULT_DATE_FILTER), ...patch } }))
+    setMeta(prev => {
+      const current = prev.date_filter ?? DEFAULT_DATE_FILTER
+      const merged  = { ...current, ...patch }
+      // Quando filter_type muda, auto-preenche os nomes de parâmetro padrão
+      // (só se o usuário ainda está usando os nomes padrão)
+      if (patch.filter_type && patch.filter_type !== current.filter_type) {
+        const preset = DATE_FILTER_PRESETS[patch.filter_type]
+        const isDefaultInicio = [':data_inicio', ':datetime_inicio'].includes(current.param_inicio)
+        const isDefaultFim    = [':data_fim',    ':datetime_fim'   ].includes(current.param_fim)
+        if (isDefaultInicio) merged.param_inicio = preset.param_inicio
+        if (isDefaultFim)    merged.param_fim    = preset.param_fim
+      }
+      return { ...prev, date_filter: merged }
+    })
   }
 
   function handleCustomRange(range: DateRange) {
@@ -650,15 +790,218 @@ function NovoGraficoContent() {
     }
   }
 
+  // ── Carrega clientes com agente online ──────────────────────────────────────
+  useEffect(() => {
+    fetch('/api/clientes')
+      .then(r => r.json())
+      .then((d: { clientes?: ClienteOnline[] }) => {
+        const online = (d.clientes ?? []).filter(c => (c.agenteStatus ?? c.agente_status) === 'online')
+        setClientes(online)
+        if (online.length > 0 && !selectedCliente) setSelectedCliente(online[0].id)
+      })
+      .catch(() => {/* silencioso */})
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // ── Testar SQL ──────────────────────────────────────────────────────────────
+  async function handleTestSQL() {
+    if (!meta.query.sql.trim()) {
+      toast('Digite um SQL antes de testar', 'warning')
+      return
+    }
+    setSqlRunning(true)
+    setSqlError(null)
+    setSqlResult(null)
+    try {
+      const res = await fetch('/api/graficos/preview', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ sql: meta.query.sql }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setSqlError(data.error ?? 'Erro desconhecido')
+        return
+      }
+      setSqlResult(data)
+      setPreviewKey(k => k + 1)
+    } catch (e) {
+      setSqlError(e instanceof Error ? e.message : 'Erro de rede')
+    } finally {
+      setSqlRunning(false)
+    }
+  }
+
+  // ── Testar SQL via Agente do cliente ─────────────────────────────────────────
+  async function handleAgentPreview() {
+    if (!meta.query.sql.trim()) {
+      toast('Digite um SQL antes de testar', 'warning')
+      return
+    }
+    if (!selectedCliente) {
+      toast('Selecione um cliente com agente online', 'warning')
+      return
+    }
+    setAgentRunning(true)
+    setSqlError(null)
+    setSqlResult(null)
+    try {
+      const res = await fetch('/api/graficos/agent-preview', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ sql: meta.query.sql, cliente_id: selectedCliente }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setSqlError(data.error ?? 'Erro do agente')
+        return
+      }
+      setSqlResult(data)
+      setPreviewKey(k => k + 1)
+    } catch (e) {
+      setSqlError(e instanceof Error ? e.message : 'Erro de rede')
+    } finally {
+      setAgentRunning(false)
+    }
+  }
+
+  // ── Auto-preencher campos a partir das colunas do SQL ───────────────────────
+  function guessFormat(col: string): string {
+    const c = col.toLowerCase()
+    if (c.includes('valor') || c.includes('preco') || c.includes('preço') || c.includes('total') || c.includes('fat') || c.includes('receita') || c.includes('custo')) return 'currency'
+    if (c.includes('percent') || c.includes('pct') || c.includes('margem') || c.includes('taxa')) return 'percent'
+    if (c.includes('data') || c.includes('date') || c === 'dt') return 'date'
+    if (c.includes('hora') || c.includes('time') || c.includes('datetime') || c.includes('created') || c.includes('updated')) return 'datetime'
+    if (c.includes('qtd') || c.includes('quantidade') || c.includes('volume') || c.includes('litros') || c.includes('count') || c.includes('num') || c.includes('abast')) return 'number'
+    return 'text'
+  }
+
+  function autoFillFields() {
+    if (!sqlResult?.columns?.length) return
+    const cols = sqlResult.columns
+
+    if (type === 'report') {
+      const newCols = cols.map(c => ({
+        field:   c,
+        label:   c.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+        format:  guessFormat(c) as import('@/lib/types').ReportColumnFormat,
+        align:   (['currency','number','percent'].includes(guessFormat(c)) ? 'right' : 'left') as 'left' | 'right' | 'center',
+        summary: (['currency','number'].includes(guessFormat(c)) ? 'sum' : 'none') as import('@/lib/types').ReportSummaryFn,
+      }))
+      setMeta(prev => ({ ...prev, report_config: { ...(prev.report_config ?? { show_totals: true, show_index: false }), columns: newCols } }))
+      toast(`${newCols.length} colunas preenchidas`, 'success')
+
+    } else if (type === 'kpi') {
+      const metricCols = cols.slice(0, 4)
+      const newMetrics = metricCols.map((c, i) => ({
+        field:     c,
+        label:     c.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+        format:    (guessFormat(c) === 'currency' ? 'currency' : guessFormat(c) === 'percent' ? 'percent' : 'number') as import('@/lib/types').KpiMetric['format'],
+        icon:      'BarChart3',
+        color:     ['#009c3b','#3b82f6','#f59e0b','#8b5cf6'][i % 4],
+        sparkline: false,
+      }))
+      setMeta(prev => ({ ...prev, kpi_config: { ...(prev.kpi_config ?? DEFAULT_KPI), metrics: newMetrics } }))
+      toast(`${newMetrics.length} métricas preenchidas`, 'success')
+
+    } else if (type === 'multiblock') {
+      // Heurísticas: 1ª textual = groupBy; numéricas = KPIs (até 3) + donut + tabela
+      const numericCol = (c: string) => ['number','currency','percent'].includes(guessFormat(c))
+      const textCol    = cols.find(c => !numericCol(c)) ?? cols[0]
+      const numCols    = cols.filter(c => numericCol(c))
+
+      const blocks: import('@/lib/types').MultiBlock[] = []
+      // 3 KPIs primeiros campos numéricos
+      numCols.slice(0, 3).forEach((c, i) => {
+        const fmt = guessFormat(c)
+        blocks.push({
+          type: 'kpi',
+          title: c.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+          field: c,
+          agg: 'sum',
+          format: (fmt === 'currency' ? 'currency' : fmt === 'percent' ? 'percent' : fmt === 'number' ? 'number' : 'number') as import('@/lib/types').KpiFormat,
+          color: ['#009c3b','#3b82f6','#f59e0b'][i] ?? '#009c3b',
+        })
+      })
+      // Donut por categoria
+      if (textCol && numCols[0]) {
+        blocks.push({
+          type: 'donut',
+          title: `${textCol} × ${numCols[0]}`,
+          groupBy: textCol,
+          valueField: numCols[0],
+          valueAgg: 'sum',
+          showLegend: true,
+        })
+      }
+      // Tabela com tudo
+      blocks.push({
+        type: 'table',
+        title: 'Detalhes',
+        columns: cols.map(c => ({
+          field: c,
+          label: c.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+          format: guessFormat(c) as import('@/lib/types').ReportColumnFormat,
+          align: (numericCol(c) ? 'right' : 'left') as 'left' | 'right' | 'center',
+          summary: (numericCol(c) ? 'sum' : 'none') as import('@/lib/types').ReportSummaryFn,
+        })),
+        showTotals: true,
+        maxRows: 20,
+      })
+
+      setMeta(prev => ({ ...prev, multiblock_config: { blocks, layout: { preset: 'kpis-top' } } }))
+      toast(`${blocks.length} blocos preenchidos`, 'success')
+
+    } else if (type === 'tank') {
+      const find = (hints: string[]) => cols.find(c => hints.some(h => c.toLowerCase().includes(h)))
+      setMeta(prev => ({
+        ...prev,
+        tank_config: {
+          ...(prev.tank_config ?? DEFAULT_TANK),
+          field_produto:    find(['produto','nome','name','combustivel','combustível']) ?? prev.tank_config?.field_produto ?? 'produto',
+          field_volume:     find(['volume','atual','estoque','litros']) ?? prev.tank_config?.field_volume ?? 'volume_atual',
+          field_capacidade: find(['capacidade','capacity','total','max']) ?? prev.tank_config?.field_capacidade ?? 'capacidade_total',
+          field_disponivel: find(['disponivel','disponível','available','livre']) ?? prev.tank_config?.field_disponivel,
+          field_percentual: find(['percent','pct','percentual','nivel','nível']) ?? prev.tank_config?.field_percentual,
+        },
+      }))
+      toast('Campos do tanque preenchidos', 'success')
+
+    } else {
+      const numericCol  = (c: string) => ['number','currency','percent'].includes(guessFormat(c))
+      const xCandidate  = cols.find(c => !numericCol(c)) ?? cols[0]
+      const yCandidates = cols.filter(c => c !== xCandidate && numericCol(c))
+      if (yCandidates.length === 0 && cols.length > 1) yCandidates.push(...cols.filter(c => c !== xCandidate))
+
+      const yAxes = (yCandidates.length > 0 ? yCandidates : [cols[1] ?? cols[0]]).map((c, i) => ({
+        field: c,
+        label: c.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+        color: ['#009c3b','#3b82f6','#f97316','#fbbf24','#8b5cf6'][i % 5],
+      }))
+
+      setMeta(prev => ({
+        ...prev,
+        axes: {
+          x: { field: xCandidate, label: xCandidate.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) },
+          y: yAxes,
+        },
+      }))
+      toast('Eixos preenchidos automaticamente', 'success')
+    }
+
+    setPreviewKey(k => k + 1)
+  }
+
   // ── Seleção de preview ──────────────────────────────────────────────────
   function renderPreview() {
     switch (type) {
-      case 'report':    return <ReportPreview   metadata={meta} key={previewKey} />
+      case 'report':    return <ReportPreview   metadata={meta} key={previewKey} realData={sqlResult} />
       case 'kpi':       return <KpiPreview      metadata={meta} key={previewKey} />
       case 'heatmap':   return <HeatmapPreview  metadata={meta} key={previewKey} />
       case 'waterfall': return <WaterfallPreview metadata={meta} key={previewKey} />
       case 'button':    return <ButtonPreview   metadata={meta} key={previewKey} />
-      case 'tank':      return <TankPreview     metadata={meta} key={previewKey} />
+      case 'tank':       return <TankPreview       metadata={meta} key={previewKey} />
+      case 'multiblock': return <MultiBlockPreview metadata={meta} key={previewKey} realData={sqlResult} />
       default:          return <ChartPreview    metadata={meta} key={previewKey} />
     }
   }
@@ -684,15 +1027,162 @@ function NovoGraficoContent() {
 
       <div className="flex flex-1 overflow-hidden">
         {/* ── SQL Editor ── */}
-        <div className="w-1/2 border-r border-white/8 flex flex-col">
-          <SQLEditor value={meta.query.sql} onChange={sql => update('query', { ...meta.query, sql })} />
+        <div className="w-1/2 border-r border-white/8 flex flex-col overflow-hidden isolate">
+          {/* Editor — isolate + relative + overflow-hidden contém Monaco (absolute) */}
+          <div className="flex-1 min-h-0 relative overflow-hidden">
+            <SQLEditor value={meta.query.sql} onChange={sql => update('query', { ...meta.query, sql })} />
+          </div>
+
+          {/* ── Barra de ação SQL ── */}
+          <div className="border-t border-white/8 px-4 py-2 flex items-center gap-2.5 bg-white/[0.02] flex-shrink-0">
+
+            {/* Testar no banco do portal */}
+            <button
+              type="button"
+              onClick={handleTestSQL}
+              disabled={sqlRunning || agentRunning}
+              className={cn(
+                'flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex-shrink-0',
+                sqlRunning
+                  ? 'bg-white/5 text-white/30 cursor-not-allowed'
+                  : 'bg-[#009c3b] hover:bg-[#00b548] text-white shadow-md shadow-[#009c3b]/20',
+              )}
+            >
+              <Play size={11} className={sqlRunning ? 'animate-pulse' : ''} />
+              {sqlRunning ? 'Executando…' : 'Testar SQL'}
+            </button>
+
+            {/* Indicador de resultado */}
+            {sqlResult && !sqlRunning && !agentRunning && (
+              <span className="flex items-center gap-1 text-xs text-[#009c3b] flex-shrink-0">
+                <CheckCircle2 size={12} />
+                {sqlResult.count} linha{sqlResult.count !== 1 ? 's' : ''} · {sqlResult.columns.length} col
+              </span>
+            )}
+
+            {/* Erro */}
+            {sqlError && (
+              <span className="flex items-center gap-1.5 text-xs text-red-400 min-w-0 max-w-[200px]">
+                <AlertCircle size={12} className="flex-shrink-0" />
+                <span className="truncate font-mono">{sqlError}</span>
+              </span>
+            )}
+
+            {/* Spacer */}
+            <div className="flex-1" />
+
+            {/* Auto-preencher (só quando há resultado) */}
+            {sqlResult && !['button'].includes(type) && (
+              <button
+                type="button"
+                onClick={autoFillFields}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-white/5 text-white/60 hover:bg-[#009c3b]/15 hover:text-[#009c3b] transition-all border border-white/8 hover:border-[#009c3b]/30 flex-shrink-0"
+              >
+                <Wand2 size={11} />
+                Auto-preencher
+              </button>
+            )}
+
+            {/* Separador vertical */}
+            <div className="w-px h-4 bg-white/10 flex-shrink-0" />
+
+            {/* Seção do agente */}
+            {clientes.length === 0 ? (
+              <span className="flex items-center gap-1.5 text-xs text-white/25 flex-shrink-0">
+                <WifiOff size={11} />
+                Nenhum agente
+              </span>
+            ) : (
+              <>
+                <select
+                  value={selectedCliente}
+                  onChange={e => setSelectedCliente(e.target.value)}
+                  className="bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5 text-white text-xs focus:outline-none focus:border-[#009c3b]/40 max-w-[150px] flex-shrink-0"
+                >
+                  {clientes.map(c => (
+                    <option key={c.id} value={c.id} className="bg-[#111]">{c.nome}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={handleAgentPreview}
+                  disabled={agentRunning || sqlRunning}
+                  className={cn(
+                    'flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex-shrink-0',
+                    agentRunning
+                      ? 'bg-white/5 text-white/30 cursor-not-allowed'
+                      : 'bg-emerald-700/80 hover:bg-emerald-600 text-white shadow-md shadow-emerald-900/30',
+                  )}
+                >
+                  <Wifi size={11} className={agentRunning ? 'animate-pulse' : ''} />
+                  {agentRunning ? 'Aguardando…' : 'Via Agente'}
+                </button>
+              </>
+            )}
+          </div>
+
+          {/* ── Banner de aviso: 0 linhas (não é erro, mas confunde) ── */}
+          {sqlResult && sqlResult.empty && (
+            <div className="flex-shrink-0 border-t border-amber-500/30 bg-amber-500/10 px-4 py-3 space-y-2">
+              <div className="flex items-start gap-2 text-amber-300 text-xs">
+                <AlertCircle size={14} className="flex-shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <div className="font-semibold">Query executou sem erro mas retornou 0 linhas</div>
+                  <div className="text-white/60">
+                    {sqlResult.hint ?? 'Verifique filtros, períodos e códigos ERP.'}
+                  </div>
+                  {sqlResult.empresas_ids && (
+                    <div className="text-white/50 font-mono">
+                      Substituído <span className="text-amber-300">:empresas_filtradas</span> → {sqlResult.empresas_ids.join(', ')}
+                    </div>
+                  )}
+                </div>
+              </div>
+              {sqlResult.prepared_sql && (
+                <details className="group">
+                  <summary className="cursor-pointer text-[11px] text-amber-300/70 hover:text-amber-300 select-none">
+                    ▸ Ver SQL preparado (com placeholders substituídos)
+                  </summary>
+                  <pre className="mt-2 p-3 bg-black/40 border border-amber-500/20 rounded text-[11px] text-white/70 font-mono overflow-auto max-h-[200px]">
+                    {sqlResult.prepared_sql}
+                  </pre>
+                </details>
+              )}
+            </div>
+          )}
+
+          {/* ── Sugestões automáticas de tipo de gráfico ── */}
+          {sqlResult && sqlResult.columns.length > 0 && (
+            <ChartSuggestions
+              columns={sqlResult.columns}
+              rows={sqlResult.rows}
+              current={type}
+              onPick={(t) => {
+                changeType(t)
+                // Auto-preencher depois da troca pra carregar campos baseado nas colunas
+                setTimeout(() => autoFillFields(), 50)
+              }}
+            />
+          )}
+
+          {/* ── Resultado da query (viewer maior + expandir + copiar) ── */}
+          {sqlResult && sqlResult.columns.length > 0 && (
+            <SqlDataTable
+              data={sqlResult}
+              maxHeight="420px"
+              rowLimit={100}
+              className="flex-shrink-0"
+            />
+          )}
         </div>
 
         {/* ── Preview + Config ── */}
         <div className="w-1/2 flex flex-col overflow-hidden">
           {/* Preview */}
           <div className="h-[340px] border-b border-white/8 flex flex-col">
-            {renderPreview()}
+            <ErrorBoundary>
+              {renderPreview()}
+            </ErrorBoundary>
           </div>
 
           {/* Config scrollável */}
@@ -707,19 +1197,42 @@ function NovoGraficoContent() {
                 onChange={e => update('nome', e.target.value)}
               />
               <div className="space-y-1.5">
-                <label className="block text-xs font-medium text-white/50 uppercase tracking-wider">Categoria</label>
+                <label className="block text-xs font-medium text-white/50 uppercase tracking-wider">
+                  Menu do PWA <span className="text-white/30 normal-case text-[10px]">— onde este relatório aparece</span>
+                </label>
                 <select
                   value={meta.categoria}
                   onChange={e => update('categoria', e.target.value)}
                   className="w-full bg-white/4 border border-white/10 rounded-lg px-3.5 py-2.5 text-white text-sm focus:outline-none focus:border-[#009c3b]/60"
                 >
-                  {['vendas','estoque','financeiro','operacional','geral'].map(c => (
-                    <option key={c} value={c} className="bg-[#111]">
-                      {c.charAt(0).toUpperCase() + c.slice(1)}
-                    </option>
+                  {[
+                    { id: 'iniciar',    label: 'Iniciar (tela inicial)' },
+                    { id: 'pista',      label: 'Pista' },
+                    { id: 'estoque',    label: 'Estoque' },
+                    { id: 'vendas',     label: 'Vendas' },
+                    { id: 'financeiro', label: 'Financeiro' },
+                    { id: 'operacoes',  label: 'Operações' },
+                  ].map(o => (
+                    <option key={o.id} value={o.id} className="bg-[#111]">{o.label}</option>
                   ))}
                 </select>
               </div>
+            </div>
+
+            {/* Ícone + cores do card no PWA */}
+            <div className="space-y-1.5">
+              <label className="block text-xs font-medium text-white/50 uppercase tracking-wider">
+                Ícone do card no PWA
+              </label>
+              <IconPicker
+                iconName={meta.display.icon}
+                iconBg={meta.display.icon_bg}
+                iconColor={meta.display.icon_color}
+                onChange={patch => setMeta(prev => ({
+                  ...prev,
+                  display: { ...prev.display, ...patch },
+                }))}
+              />
             </div>
 
             {/* ── Tipo + Permissão ── */}
@@ -783,13 +1296,12 @@ function NovoGraficoContent() {
                     </span>
                   ))}
                 </div>
-                <div className="space-y-2">
-                  {repCols.map((col, i) => (
-                    <ColRow key={i} col={col} index={i} total={repCols.length}
-                      onChange={(f, v) => updateRepCol(i, f, v)}
-                      onRemove={() => removeRepCol(i)} />
-                  ))}
-                </div>
+                <ColListSortable
+                  cols={repCols}
+                  setRepCols={setRepCols}
+                  updateRepCol={updateRepCol}
+                  removeRepCol={removeRepCol}
+                />
                 <div className="mt-3 flex items-center gap-5 flex-wrap">
                   {([['show_totals','Linha de Totais'],['show_index','Nº da Linha']] as const).map(([k, lbl]) => (
                     <label key={k} className="flex items-center gap-2 cursor-pointer">
@@ -804,6 +1316,24 @@ function NovoGraficoContent() {
                     <RefreshCw size={12} />Preview
                   </button>
                 </div>
+              </div>
+            )}
+
+            {/* ── MULTIBLOCK ── */}
+            {type === 'multiblock' && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 pb-2 border-b border-white/8">
+                  <Layers size={14} className="text-purple-400" />
+                  <p className="text-xs font-semibold text-white/70 uppercase tracking-wider">Blocos do Multibloco</p>
+                </div>
+                <p className="text-[10px] text-white/40 leading-relaxed">
+                  1 SQL no editor (esquerda) gera todos os blocos abaixo. Rode "Via Agente" primeiro pra carregar as colunas, depois adicione blocos.
+                </p>
+                <MultiblockEditor
+                  config={meta.multiblock_config}
+                  columns={sqlResult?.columns ?? []}
+                  onChange={cfg => setMeta(prev => ({ ...prev, multiblock_config: cfg }))}
+                />
               </div>
             )}
 
@@ -1175,7 +1705,7 @@ ORDER BY produto`}</pre>
             )}
 
             {/* ── GRÁFICOS CLÁSSICOS — eixos + display ── */}
-            {!['report','kpi','heatmap','waterfall','button','tank'].includes(type) && (
+            {!['report','kpi','heatmap','waterfall','button','tank','multiblock'].includes(type) && (
               <>
                 {/* Altura */}
                 <div className="flex items-center gap-3">
@@ -1286,6 +1816,35 @@ ORDER BY produto`}</pre>
                 {dateFlt.enabled && (
                   <div className="border-t border-white/8 px-4 py-4 space-y-4 bg-white/[0.01]">
 
+                    {/* Tipo de filtro: data ou datetime */}
+                    <div>
+                      <p className="text-[10px] text-white/40 uppercase tracking-wider font-semibold mb-2">
+                        Tipo de campo no banco
+                      </p>
+                      <div className="grid grid-cols-2 gap-2">
+                        {(['date', 'datetime'] as const).map(ft => {
+                          const opt = DATE_FILTER_PRESETS[ft]
+                          const active = (dateFlt.filter_type ?? 'date') === ft
+                          return (
+                            <button
+                              key={ft}
+                              type="button"
+                              onClick={() => setDateFilter({ filter_type: ft })}
+                              className={cn(
+                                'text-left px-3 py-2.5 rounded-lg border text-xs transition-all',
+                                active
+                                  ? 'bg-[#009c3b]/15 border-[#009c3b]/40 text-white'
+                                  : 'bg-white/3 border-white/8 text-white/40 hover:text-white/60 hover:border-white/15',
+                              )}
+                            >
+                              <p className="font-semibold mb-0.5">{opt.label}</p>
+                              <p className="text-[10px] text-white/30 leading-tight">{opt.hint}</p>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+
                     {/* Parâmetros SQL */}
                     <div>
                       <p className="text-[10px] text-white/40 uppercase tracking-wider font-semibold mb-2">
@@ -1314,7 +1873,7 @@ ORDER BY produto`}</pre>
                       <p className="text-white/25 text-[10px] mt-1.5">
                         Use esses nomes no SQL · Ex:{' '}
                         <code className="text-green-400/60 font-mono">
-                          WHERE data BETWEEN {dateFlt.param_inicio} AND {dateFlt.param_fim}
+                          WHERE {(dateFlt.filter_type ?? 'date') === 'datetime' ? 'criado_em' : 'data'} BETWEEN {dateFlt.param_inicio} AND {dateFlt.param_fim}
                         </code>
                       </p>
                     </div>

@@ -4,10 +4,10 @@
   "jwt_token": "COLE_AQUI_O_TOKEN_GERADO_NO_PORTAL",
 
   "mqtt": {
-    "broker": "mqtts://mobilev2.gruposgapetro.com.br:8883",
+    "broker": "wss://mobilev2.gruposgapetro.com.br:4443/mqtt-ws",
     "client_id": "agent-CNPJ_SEM_PONTUACAO",
-    "username": "agent",
-    "password": "gerado-no-portal",
+    "username": "",
+    "password": "",
     "keep_alive_seconds": 30,
     "reconnect_wait_seconds": 5
   },
@@ -32,16 +32,26 @@
   "log": {
     "level": "info",
     "path": "./agent.log",
-    "max_size_mb": 50,
-    "max_backups": 3
+    "max_size_mb": 20,
+    "max_backups": 5
   },
 
   "portal": {
-    "url": "https://mobilev2.gruposgapetro.com.br:4443",
+    "url": "https://mobilev2.gruposgapetro.com.br:4444",
     "push_secret": ""
   },
 
   "http": {
     "port": 8765
+  },
+
+  "update": {
+    "poll_interval_minutes": 30,
+    "enabled": true
+  },
+
+  "watchdog": {
+    "timeout_minutes": 5,
+    "enabled": true
   }
 }
